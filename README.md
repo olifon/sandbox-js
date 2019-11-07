@@ -33,10 +33,10 @@ jail.terminate();
 ## Benefits of chroot JS
 
 1. It is completely safe, the code runs in a completely seperated and isolated javascript context. It cannot access any of the variables from the main program. And it can neither access dangerous functions in the worker's global like postMessage.
-2. It is fast, no checks are required before the code is exeucted. The code runs in a native VM from the browser. The code can only access some basic functions and objects that only can affect their own stuff. You can whitelist more features if you want.
+2. It is fast, you don't have to check the code before it is executed. The code runs in a native VM provided by the browser. The code can only access some basic functions and objects. You can whitelist more features if you want.
 3. No Denial of Service attacks, all tasks returns promises. Whenever the code is going to execute some nasty code (like while(true) {}), you can set timeouts that will stop the worker when the execution takes too long.
 4. No limits. No features of Ecmascript are blocked because of security and vulnerabilities. The jailed code can use any basic function or object. You can also whitelist more objects provided by the worker like 'XMLHttpRequest'
-5. You have full control over the code that is going to be executed. You can access any objects in the global scope and execute at any time any code that you want. There is no way that the malicious code can delete or modifiy this access.
+5. You have full control over the code that is going to be executed. There is no way that the malicious code can delete or modifiy this access.
 
 ## License
 This project is licensed under the MIT License - see the [LICENSE.md](LICENSE.md) file for details
