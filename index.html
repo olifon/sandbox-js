@@ -1,0 +1,191 @@
+<html>
+    <head>
+        <link rel="stylesheet" type="text/css" href="term_styles.css"></script>
+        <script type="text/javascript" src="jailjs.js"></script>
+        <script type="text/javascript" src="termlib.js"></script>
+    </head>
+    <body>
+        <div id="termDiv"></div>
+        <script type="text/javascript">
+            var convert_variable_to_string = async function(result) {
+                if(typeof result == 'undefined') return 'undefined';
+                else if(result == null) return 'null';
+                else if(result instanceof JailObject) {
+                    if(result.isFunction()) {
+                        result = await result.invoke('toString', result, []);
+                    } else if(result.isRoot()) {
+                        result = 'self';
+                    } else {
+                        result = await convert_variable_to_string(await result.resolve(false));
+                    }
+                } else if(result instanceof JailPromise) {
+                    term.write('Promise ');
+                    var c = term.c;
+                    var rr = term.r;
+                    result.value.then(async function(r) {
+                        var or = term.r;
+                        var oc = term.c;
+                        term.cursorSet(rr, c);
+                        term.write('resolve ' + await (convert_variable_to_string(r)));
+                        term.cursorSet(or, oc);
+                    }, async function(r) {
+                        var or = term.r;
+                        var oc = term.c;
+                        term.cursorSet(rr, c);
+                        term.write('reject ' + await (convert_variable_to_string(r)));
+                        term.cursorSet(or, oc);
+                    });
+                    return null;
+                } else if(result instanceof Error) {
+                    return String(result);
+                } else if(typeof result == 'object') {
+                    if(result == null) return 'null';
+                    if(result instanceof Array) {
+                        var str = '[';
+                        var len = result.length;
+                        for(var i = 0; i < len; i++) {
+                            if(i > 0) str += ',';
+                            str += await convert_variable_to_string(result[i]);
+                        }
+                        return str + ']';
+                    } else {
+                        var str;
+                        var first = true;
+                        if(result instanceof Number) {
+                            str = '{' + String(result);
+                            first = false;
+                        } else if(result instanceof String) {
+                            str = '{' + JSON.stringify(String(result));
+                            first = false;
+                        } else if(result instanceof Boolean) {
+                            str = '{' + (result ? 'true' : 'false');
+                            first = false;
+                        } else if(result instanceof Symbol) {
+                            str = '{' + result.toString();
+                            first = false;
+                        } else {
+                            str = '{';
+                        }
+                        var keys = Object.getOwnPropertyNames(result);
+                        var allowed = "abcdefghijlkmnopqrstuvwxyzABCDEFHIJKLMNOPQRSTUVWXYZ_";
+                        for(var i = 0; i < keys.length; i++) {
+                            var key = keys[i];
+                            if(isFinite(key) && result instanceof String) continue;
+                            if(!first) str += ', ';
+                            if(key == undefined) continue;
+                            var value = result[key];
+                            var can = false;
+                            if(typeof key == 'string') {
+                                can = true;
+                                var strlen = key.length;
+                                for(var x = 0; x < strlen; x++) {
+                                    var chr = key.charAt(x);
+                                    if(!(allowed.includes(chr) || (x > 0 && isFinite(chr)))) {
+                                        can = false;
+                                        break;
+                                    }
+                                }
+                            }
+                            first = false;
+                            str += (can ? key : await convert_variable_to_string(key)) + ': ' + await convert_variable_to_string(value);
+                        }
+                        return str + '}';
+
+                    }
+                } else if(typeof result == 'function') {
+                    if('wrapper' in result) convert_variable_to_string(result.wrapper);
+                    result = result.toString();
+                } else if(typeof result == 'string') {
+                    return JSON.stringify(result);
+                } else {
+                    result = String(result);
+                }
+                return result;
+            }
+            var jail = undefined;
+            var root = undefined;
+
+            var term = new Terminal( {                          x: 220,
+                    y: 70,
+                    cols: 150,
+                    rows: 50,
+                    termDiv: 'termDiv',handler: function () {
+                        term.isPrompt = false;
+                        this.newLine();
+                        var line = this.lineBuffer;
+                        if (line != "") {
+                            var me = this;
+                            jail.execute(line).then(async function(result) {
+                                me.log(await convert_variable_to_string(result));
+                                me.prompt();
+                            }, async function(ex) {
+                                if(ex instanceof JailTerminatedError) return;
+                                me.log('[exception] ' + await convert_variable_to_string(ex));
+                                me.prompt();
+                            });
+                            jail.timeoutAfter(3000).catch(function(ex) {term.log('[exception] JailTerminatedError: ' + ex.message)});
+                        } else term.prompt();
+                    }
+            });
+            term.isPrompt = false;
+            (function() {
+                var oldprompt = term.prompt.bind(term);
+                term.prompt = function() {
+                    term.isPrompt = true;
+                    oldprompt();
+                }
+            })();
+            term.log = function(x) {
+                if(x != null) {
+                    term.write(x);
+                    term.newLine();
+                }
+
+            };
+            (function() {
+                var term_opened = false;
+                var setupJail = async function() {
+                    jail = new JailJS();
+                    root = jail.root;
+                    jail.onTerminate().then(setupJail);
+                    var console = await jail.createEmptyObject();
+                    //because of the jail api, all actions are executed in order.
+                    //we only have to set 'await' on jail.execute, because then we also know that the other
+                    //requests already have been executed.
+                    console.set('log', function(r) {(async function() {
+                        if(typeof r == 'string') {
+                            term.log(r);
+                        } else term.log(await convert_variable_to_string(r));
+                    })()});
+                    console.set('error', function(r) {(async function() {
+                        if(typeof r == 'string') {
+                            term.log('[error] ' + r);
+                        } else term.log('[error] ' + await convert_variable_to_string(r));
+                    })()});
+                    console.set('warn', function(r) {(async function() {
+                        if(typeof r == 'string') {
+                            term.log('[warning] ' + r);
+                        } else term.log('[warning] ' + await convert_variable_to_string(r));
+                    })()});
+                    console.set('debug', function(r) {(async function() {
+                        if(typeof r == 'string') {
+                            term.log('[debug] ' + r);
+                        } else term.log('[debug] ' + await convert_variable_to_string(r));
+                    })()});
+                    root.defineProperty('console', {enumerable: false, configurable: true, writable: true, value: console});
+                    root.defineProperty('close', {enumerable: false, configurable: true, writable: true, value: (function() {
+                        jail.forceTerminate("The jail has been terminated by the jailed code.");
+                    })});
+                    await jail.execute(
+                    "(function() {var debug = self.console.debug; var Error = self.Error; console.trace = function() {debug((new Error()).stack);}})();"
+                    );
+                    if(!term_opened) term.open();
+                    else term.prompt();
+                    term_opened = true;
+                }
+                setupJail();
+            })();         
+
+        </script>
+    </body>
+</html>
