@@ -74,6 +74,7 @@
         var _f_to_string = Function.prototype.toString;
         var _f_str = Function.prototype.toString.toString();
         var _promise_then = Promise.prototype.then;
+        var _boolean_value_of = Boolean.prototype.valueOf;
         Function.prototype.toString = function() {
             if(this.toString === jailed_to_string) return apply(jailed_to_string, [this]);
             else if(this === Function.prototype.toString || this === Function.prototype.toString.toString) return _f_str;
@@ -110,6 +111,8 @@
             bindFunction: bindFunction,
             apply: apply,
             undefined: self.undefined,
+            NaN: self.NaN,
+            Infinity: self.Infinity,
             JSON: {
                 stringify: JSON.stringify,
                 parse: JSON.parse
@@ -162,6 +165,9 @@
                 },
                 promiseThen(promise, x, y) {
                     return apply(_promise_then, [promise, x, y]);
+                },
+                booleanValue(bool) {
+                    return apply(_boolean_value_of, [bool]);
                 },
                 keys: bind(Object.keys, self),
                 defineProperty: bind(Object.defineProperty, self),
@@ -245,6 +251,8 @@
             var util = root.util;
             var undefined = root.undefined;
             var self = root.self;
+            var Infinity = root.Infinity;
+            var NaN = root.NaN;
             index = JSON.stringify(index);
             if(typeof value == 'undefined') {
                 return 'undefined';
@@ -255,6 +263,10 @@
             } else if(typeof value == 'number' || typeof value == 'string' || typeof value == 'boolean') {
                 if(typeof value == 'number' && util.isNaN(value)) {
                     return "NaN";
+                } else if(value == Infinity) {
+                    return 'Infinity';
+                } else if(value == -Infinity) {
+                    return 'Infinity_negative';
                 } else {
                     return JSON.stringify(value);
                 }
@@ -385,7 +397,7 @@
                 if(isStatic) {
                     var keys = util.keys(value);
                     var len = util.arrayLength(keys);
-                    var str = "Boolean(" + (Boolean(value) ? 'true' : 'false') + ",{";
+                    var str = "Boolean(" + (util.booleanValue(value) ? 'true' : 'false') + ",{";
                     for(var i = 0; i < len; i++) {
                         var key = keys[i];
                         if(key == undefined) continue;
@@ -407,7 +419,7 @@
                     }
                     if(index == null) index = data.count++;
                     data.objs[index] = value;
-                    return "Boolean(" + String(index) + "," + (Boolean(value) ? 'true' : 'false') + ")";
+                    return "Boolean(" + String(index) + "," + (util.booleanValue(value) ? 'true' : 'false') + ")";
                 }
             } else if(value instanceof Promise) {
                 var index = null;

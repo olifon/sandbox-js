@@ -38,8 +38,8 @@ class JailPromise {
 
         name() {
             if(this.index >= this.str.length) return null;
-            var strchr = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
-            var strchr2 = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+            var strchr = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_';
+            var strchr2 = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_';
             for(var i = this.index; i < this.str.length; i++) {
                 var chr = this.str.charAt(i);
                 if(i > this.index) {
@@ -264,6 +264,10 @@ class JailPromise {
             return toJailObject(jaileval, 0, null);
             case 'nan':
             return NaN;
+            case 'infinity':
+            return Infinity;
+            case 'infinity_negative':
+            return -Infinity;
             case 'undefined':
             return undefined;
             case 'null':
@@ -505,7 +509,11 @@ class JailPromise {
             return 'null';  
         } else if(typeof value == 'number') {
             if(isNaN(value)) {
-                return 'NaN';
+                return 'this.root.NaN';
+            } else if(value == Infinity) {
+                return 'this.root.Infinity'
+            } else if(value == -Infinity) {
+                return '(-this.root.Infinity)'
             } else {
                 return '(' + String(value) + ')';
             }
@@ -535,7 +543,8 @@ class JailPromise {
             return '(this.wrap("function",' + String(index) + '))';
         } else if(typeof value == 'boolean') {
             return value ? 'true' : 'false';
-        } else if(value instanceof Promise) {
+        } else if(value instanceof Promise || value instanceof JailPromise) {
+            if(value instanceof JailPromise) value = value.value;
             if(index in jaileval.promises) {
                 return '(this.wrap("promise", ' + String(index) + '))';
             }
@@ -543,9 +552,9 @@ class JailPromise {
             jaileval.promises[index] = new JailPromise(value);
             return '(this.wrap("promise", ' + String(index) + '))';
         } else if(value instanceof String) {
-            return '(new String(' + JSON.stringify(String(value)) + '))';
+            return '(new this.root.StringType(' + JSON.stringify(String(value)) + '))';
         } else if(value instanceof Number) {
-            return '(new Number(' + String(value) + '))';
+            return '(new this.root.Number(' + String(value) + '))';
         } else if(value instanceof Symbol) {
             var index;
             value = value.valueOf();
@@ -557,6 +566,8 @@ class JailPromise {
                 jaileval.symbol_index[index] = value;
             }
             return '(this.root.Object(this.symbol(' + String(index) + ',' + JSON.stringify(value.description) + ')))';
+        } else if(value instanceof Boolean) {
+            return '(new this.root.Boolean(' + (value.valueOf() ? 'true' : 'false') + '))';
         } else if(value instanceof Array) {
             var length = value.length;
             var str = '[';
@@ -567,8 +578,6 @@ class JailPromise {
             return '(' + str + '])';
         } else if(value instanceof JailObject) {
             return '(this.objs[' + String(value[jail_index]) + '])';
-        } else if(value instanceof JailPromise) {
-            return fromValue(value.value);
         } else if(value instanceof Error) {
             return '(this.wrap("error", {name:' + JSON.stringify(value.name) + ',message:' + JSON.stringify(value.message) + ',stack:' + JSON.stringify(value.stack) + '}))';
         } else {

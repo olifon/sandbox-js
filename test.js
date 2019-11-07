@@ -24,17 +24,22 @@
             var aValue = a[propName];
             var bValue = b[propName];
             if(typeof aValue != typeof bValue) return false;
-            else if(aValue instanceof String || aValue instanceof Number || aValue instanceof Boolean || aValue instanceof Symbol) return aValue.valueOf() == bValue.valueOf();
-            else if(aValue instanceof JailObject) return aValue === bValue;
+            else if(aValue instanceof String || aValue instanceof Number || aValue instanceof Boolean || aValue instanceof Symbol) if(!aValue.valueOf() == bValue.valueOf()) 
+                return false;
+            else if(aValue instanceof JailObject) if(!aValue === bValue) 
+                return false;
             else if(aValue instanceof Promise || aValue instanceof JailPromise) {
-                if(aValue instanceof JailPromise && bValue instanceof JailPromise) return aValue === bValue;
+                if(aValue instanceof JailPromise && bValue instanceof JailPromise) if(!aValue === bValue) 
+                    return false;
                 if(aValue instanceof JailPromise) aValue = aValue.value;
                 if(bValue instanceof JailPromise) bValue = bValue.value;
-                return aValue === bValue;
+                if(!aValue === bValue) return false;
             }
             else if(typeof aValue == 'object') {
-                if(aValue == null || bValue == null) return aValue === bValue;
-                if(!(await (isEquivalent(aValue, bValue)))) return false;
+                if(aValue == null || bValue == null) if(!aValue === bValue) 
+                    return false;
+                if(!(await (isEquivalent(aValue, bValue)))) 
+                    return false;
             }
             //typeof of a function returns 'function', functions do not always need to equal.
             //because functions returned from jail, must ALWAYS return promises. So for the jail that
@@ -44,10 +49,13 @@
                 //Test our functions
                 //bValues are the functions from jail.
                 var message = 'test function ' + String(i) + ' ' + String(Math.random());
-                assert(aValue(message) == await (bValue(message)));
+                if(!aValue(message) == await (bValue(message))) 
+                    return false;
             }
-            
-            else if (aValue !== bValue) return false;
+            else if (typeof aValue == 'number' && isNaN(aValue) && isNaN(bValue)) 
+                continue;
+            else if (aValue !== bValue) 
+                return false;
         }
     
         return true;
@@ -309,7 +317,10 @@
         new JailPromise(Promise.resolve('resolved jail promise')),
         new JailPromise(Promise.reject('rejected jail promise')),
         12356, 
-        1.56
+        1.56,
+        NaN,
+        Infinity,
+        -Infinity
     ];
     var result = await returnArgs.invoke(input);
     assert(await result.instanceOf(await jail.execute('Array;')));
