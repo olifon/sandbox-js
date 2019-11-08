@@ -95,7 +95,7 @@
     assert(!obj1.isRoot());
     assert(!obj1.isFunction());
     assert(obj1 != await root.get('obj2')); //different objects don't equals
-    assert(obj1 != await jail.execute('{}')); //new objects also don't equal
+    assert(obj1 != await jail.execute('({})')); //new objects also don't equal
     assert(obj1 == await jail.execute('obj1')); //same object does
 
 

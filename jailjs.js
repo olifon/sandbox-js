@@ -800,7 +800,7 @@ class JailPromise {
          * @returns {Promise}
          */
         freeze() {
-            return this[jail_eval]('return this.static(this.util.freezeObject(this.objs[' + String(this[jail_index]) + ']));')
+            return this[jail_eval]('return this.util.freezeObject(this.objs[' + String(this[jail_index]) + ']);')
         }
 
         /**
@@ -816,7 +816,7 @@ class JailPromise {
          * @returns {Promise}
          */
         seal() {
-            return this[jail_eval]('return this.static(this.util.ObjectSeal(this.objs[' + String(this[jail_index]) + ']));')
+            return this[jail_eval]('return this.util.ObjectSeal(this.objs[' + String(this[jail_index]) + ']);')
         }
 
         /**
@@ -841,7 +841,7 @@ class JailPromise {
          * @returns {Promise}
          */
         preventExtensions() {
-            return this[jail_eval]('return this.static(this.util.ObjectPreventExtensions(this.objs[' + String(this[jail_index]) + ']));')
+            return this[jail_eval]('return this.util.ObjectPreventExtensions(this.objs[' + String(this[jail_index]) + ']);')
         }
 
         /**
