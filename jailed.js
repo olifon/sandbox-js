@@ -4,6 +4,7 @@
  * outside this closure for the jailed code.
  */
 (function(global_eval) {
+    var undefined = undefined;
     /**
      * The untrusted code may alter any important native function and value that are provided from the VM,
      * to prevent that, we copy all required native functions to the root value. So any malicous edits
@@ -72,12 +73,13 @@
         var _pop = Array.prototype.pop;
         var _concat = Array.prototype.concat;
         var _f_to_string = Function.prototype.toString;
+        var _f_to_string_string = Function.prototype.toString.toString;
         var _f_str = Function.prototype.toString.toString();
         var _promise_then = Promise.prototype.then;
         var _boolean_value_of = Boolean.prototype.valueOf;
         Function.prototype.toString = function() {
             if(this.toString === jailed_to_string) return apply(jailed_to_string, [this]);
-            else if(this === Function.prototype.toString || this === Function.prototype.toString.toString) return _f_str;
+            else if(this === _f_to_string || this === _f_to_string_string) return _f_str;
             else if(this === jailed_to_string) return _f_str;
             else return apply(_f_to_string, [this]);
         };
@@ -239,6 +241,7 @@
                 deep = value.deep;
                 value = value.value;
             }
+            var Array = root.Array;
             var String = root.String;
             var StringType = root.StringType;
             var Object = root.Object;
