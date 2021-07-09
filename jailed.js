@@ -1,3 +1,4 @@
+/*# sourceMappingURL=Jailed Core */
 /**
  * The code for the communication between the jail and the main program. (on the jail side)
  * will work in a closure. Why? Every important local value and function in this closure will not be accessible
@@ -61,8 +62,10 @@
         var _substring = String.prototype.substring;
         var _indexOf = String.prototype.indexOf;
         var _startsWith = String.prototype.startsWith;
-        var _getLength = Object.getOwnPropertyDescriptor(Array.prototype, 'length').get;
-        var _getDescription = Object.getOwnPropertyDescriptor(Symbol.prototype, 'description').get;
+        var _getLength = Object.getOwnPropertyDescriptor(Array.prototype, 'length');
+        if(_getLength) _getLength = _getLength.get;
+        var _getDescription = Object.getOwnPropertyDescriptor(Symbol.prototype, 'description');
+        if(_getDescription) _getDescription = _getDescription.get;
         var _getArray = Array.prototype.slice;
         var _trim = String.prototype.trim;
         var _String = String;
@@ -98,15 +101,16 @@
             }, 
             self: self,
             StringType: _String,
-            Number: Number, 
-            Object: Object, 
-            Promise: Promise, 
-            Function: Function, 
-            Array: Array, 
-            Symbol: Symbol,
-            Boolean: Boolean,
-            Error: Error,
-            TypeError: TypeError,
+            Number, 
+            Object, 
+            Promise, 
+            Function, 
+            Array, 
+            Symbol,
+            Boolean,
+            Error,
+            TypeError,
+            errors: { EvalError, RangeError, ReferenceError, SyntaxError, TypeError, AggregateError: self.AggregateError, InternalError: self.InternalError },
             GeneratorFunction: Object.getPrototypeOf(function*(){}).constructor,
             AsyncFunction: Object.getPrototypeOf(async function(){}).constructor,
             bind: bind,
@@ -171,25 +175,25 @@
                 booleanValue(bool) {
                     return apply(_boolean_value_of, [bool]);
                 },
-                keys: bind(Object.keys, self),
-                defineProperty: bind(Object.defineProperty, self),
-                defineProperties: bind(Object.defineProperties, self),
-                getOwnPropertyNames: bind(Object.getOwnPropertyNames, self),
-                getOwnPropertySymbols: bind(Object.getOwnPropertySymbols, self),
-                getOwnPropertyDescriptor: bind(Object.getOwnPropertyDescriptor, self),
-                freezeObject: bind(Object.freeze, self),
-                createObject: bind(Object.create, self),
-                getPrototypeOf: bind(Object.getPrototypeOf, self),
-                setPrototypeOf: bind(Object.setPrototypeOf, self),
-                ObjectEqual: bind(Object.is, self),
-                ObjectIsFrozen: bind(Object.isFrozen, self),
-                ObjectIsSealed: bind(Object.isSealed, self),
-                ObjectSeal: bind(Object.seal, self),
-                ObjectPreventExtensions: bind(Object.preventExtensions, self),
-                ObjectIsExtensible: bind(Object.isExtensible, self),
-                isNaN: isNaN,
-                apply: apply,
-                bind: bind
+                keys: bind(Object.keys, Object),
+                defineProperty: bind(Object.defineProperty, Object),
+                defineProperties: bind(Object.defineProperties, Object),
+                getOwnPropertyNames: bind(Object.getOwnPropertyNames, Object),
+                getOwnPropertySymbols: bind(Object.getOwnPropertySymbols, Object),
+                getOwnPropertyDescriptor: bind(Object.getOwnPropertyDescriptor, Object),
+                freezeObject: bind(Object.freeze, Object),
+                createObject: bind(Object.create, Object),
+                getPrototypeOf: bind(Object.getPrototypeOf, Object),
+                setPrototypeOf: bind(Object.setPrototypeOf, Object),
+                ObjectEqual: bind(Object.is, Object),
+                ObjectIsFrozen: bind(Object.isFrozen, Object),
+                ObjectIsSealed: bind(Object.isSealed, Object),
+                ObjectSeal: bind(Object.seal, Object),
+                ObjectPreventExtensions: bind(Object.preventExtensions, Object),
+                ObjectIsExtensible: bind(Object.isExtensible, Object),
+                isNaN,
+                apply,
+                bind
             },
         }
         /**
@@ -251,6 +255,7 @@
             var Symbol = root.Symbol;
             var JSON = root.JSON;
             var Error = root.Error;
+            var errors = root.errors;
             var util = root.util;
             var undefined = root.undefined;
             var self = root.self;
@@ -467,6 +472,15 @@
                     return "Array(" + String(index) + ')';
                 }
             } else if(value instanceof Error) {
+                var typeName = 'Error';
+                for(var name in errors) {
+                    try {
+                        if(value instanceof errors[name]) {
+                            typeName = String(name);
+                            break;
+                        }
+                    } catch(e) {}
+                }
                 if(isStatic) {
                     var keys = util.keys(value);
                     var len = util.arrayLength(keys);
@@ -479,9 +493,13 @@
                         str += valueToMessage(key) + ':' + valueToMessage(deep ? new StaticType(v, true) : v);
                     }
                     try {
-                        return "Error(" + JSON.stringify(String(value.name)) + "," + JSON.stringify(String(value.message)) + "," + JSON.stringify(String(value.stack)) + "," + str + '})';
+                        return "Error(" + JSON.stringify(typeName) + "," + JSON.stringify(String(value.name)) + "," + JSON.stringify(String(value.message)) + "," + JSON.stringify(String(value.stack)) + "," + str + '})';
                     } catch(ex) {
-                        return "Error(" + JSON.stringify(String(value.name)) + "," + JSON.stringify(String("No message from this error")) + "," + JSON.stringify(String("No stack from this error")) + "," + str + '})';
+                        try {
+                            return "Error(" + JSON.stringify(typeName) + "," + JSON.stringify(String(value.name)) + "," + JSON.stringify(String("No message from this error")) + "," + JSON.stringify(String("No stack from this error")) + "," + str + '})';
+                        } catch(e) {
+                            return "Error(" + JSON.stringify(typeName) + "," + JSON.stringify("No name for this error") + "," + JSON.stringify("No message from this error") + "," + JSON.stringify("No stack from this error") + "," + str + "})";
+                        }
                     }
                 } else {
                     var index = null;
@@ -496,7 +514,7 @@
                     }
                     if(index == null) index = data.count++;
                     data.objs[index] = value;
-                    return "Error(" + JSON.stringify(String(value.name)) + "," + JSON.stringify(String(value.message)) + "," + JSON.stringify(String(value.stack)) + "," + String(index) + ")";
+                    return "Error(" + JSON.stringify(typeName) + "," + JSON.stringify(String(value.name)) + "," + JSON.stringify(String(value.message)) + "," + JSON.stringify(String(value.stack)) + "," + String(index) + ")";
                 }
             } else {
                 if(isStatic) {
@@ -533,6 +551,7 @@
             var valueToMessage = imports.valueToMessage;
             var Promise = root.Promise;
             var Error = root.Error;
+            var errors = root.errors;
             var String = root.String;
             var util = root.util;
             if(index in data.objs && type != 'error') return data.objs[index];
@@ -580,10 +599,14 @@
                 return pr;
             } else if(type == 'error') {
                 value = index;
-                var err = new Error(value.message);
+                var cls = errors[value.type];
+                if(!cls) cls = Error;
+                var err = new cls(value.message);
                 try {
                     err.name = err.name;
-                    err.stack += '\r\n' + value.stack;
+                    err.main_stack = value.stack;
+                    err.toString = () => err.stack + '\r\n' + value.stack;
+                    err.toString.toString = () => "function toString() { [native code] }";
                 } catch(ex) {}
                 return err;
             } else return value;

@@ -1,5 +1,33 @@
-class JailError extends Error {}
-class JailTerminatedError extends JailError {}
+class JailError extends Error {
+   constructor(innerError, message, obj) {
+     super(message == null ? innerError : message);
+     this.cause = message == null ? null : innerError;
+     this.obj = obj == null ? null : obj; //undefined == null, will contain a copied object or a JailObject. May be modified
+   }
+
+   toString() {
+      var str = super.stack || super.toString();
+      if(this.cause != null) str += '\r\n' + this.cause.toString();
+      return str;
+   }
+
+   get jailObj() {
+     if(!this.obj) return null;
+     if(this.obj instanceof JailObject) return this.obj;
+     return null;
+   }
+
+   resolve(deep) {
+     if(!this.obj) return Promise.reject(new Error("Does not have a sub error"));
+     if(this.obj instanceof JailObject) return this.obj.resolve(deep);
+     return Promise.resolve(this.obj);
+   }
+}
+class JailTerminatedError extends JailError {
+   constructor(message) {
+     super(null, message);
+   }
+}
 /*
   This class wraps promises from the Jailed environment.
   It is needed because you cannot let a promise return an another promise (without chaining).
@@ -222,7 +250,7 @@ class JailPromise {
      * We use the stament 'throw jail_error()' to indicate that the message
      * recieved from the jail was incorrect. Normally this means that there is a bug.
      */
-    var jail_error = () => new JailError('Incorrect message from jail.');
+    var jail_error = () => new JailError(null, 'Incorrect message from jail.');
     /**
      * the toJailObject is used to wrap a JailObject from an ID for a jailed object.
      * 
@@ -493,26 +521,29 @@ class JailPromise {
             return obj;
             case 'error':
             if(!tokenizer.startCall()) throw jail_error();
+            var type = tokenizer.string();
+            if(!tokenizer.next(',')) throw jail_error();
             var name = tokenizer.string();
             if(!tokenizer.next(',')) throw jail_error();
             var message = tokenizer.string();
             if(!tokenizer.next(',')) throw jail_error();
             var stack = tokenizer.string();
+            var errors = { EvalError, RangeError, ReferenceError, SyntaxError, TypeError, AggregateError: self.AggregateError, InternalError: self.InternalError };
+            var cls = errors[type];
+            if(!cls) cls = Error;
             if(tokenizer.next(',')) {
                 var object_index = tokenizer.number();
+                var sub = new cls(message);
+                sub.name = name;
+                sub.stack = stack;
+                sub.toString = () => stack;
                 if(object_index == null) {
-                    var err = new JailError(message);
-                    err.name = name;
-                    err.stack += '\n\r' + stack;
-                    err.jail_stack = stack;
-                    if(!assign_object_from_value(jaileval, tokenizer, err)) throw jail_error();
+                    if(!assign_object_from_value(jaileval, tokenizer, sub)) throw jail_error();
                     if(!tokenizer.end()) throw jail_error();
-                    return err;
+                    return new JailError(sub, message, sub);
                 }
                 if(!tokenizer.end()) throw jail_error();
-                var err = new JailError(message);
-                err.name = name;
-                err.stack += '\n\r' + stack;
+                var err = new JailError(sub, message);
                 err.obj = toJailObject(jaileval, object_index, err);
                 return err;
             } else throw jail_error();
@@ -606,7 +637,16 @@ class JailPromise {
         } else if(value instanceof JailObject) {
             return '(this.objs[' + String(value[jail_index]) + '])';
         } else if(value instanceof Error) {
-            return '(this.wrap("error", {name:' + JSON.stringify(value.name) + ',message:' + JSON.stringify(value.message) + ',stack:' + JSON.stringify(value.stack) + '}))';
+            var type = 'Error';
+            var errors = { EvalError, RangeError, ReferenceError, SyntaxError, TypeError, AggregateError: AggregateError ?? null, InternalError: InternalError ?? null };
+            for(var cls of errors) {
+                try {
+                    if(value instanceof errors[cls]) {
+                        type = cls;
+                    }
+                } catch(ex) {}
+            }
+            return '(this.wrap("error", {type:' + JSON.stringify(type) + ',name:' + JSON.stringify(value.name) + ',message:' + JSON.stringify(value.message) + ',stack:' + JSON.stringify(value.stack) + '}))';
         } else {
             var keys = Object.keys(value);
             var length = keys.length;
@@ -980,8 +1020,18 @@ class JailPromise {
             } else if(this[jail_primitive] == jail_array) {
                 return null;
             } else {
-                return this[jail_primitive];
+                var val = this[jail_primitive];
+                if(val instanceof JailError && val.cause) val = val.cause;
+                return val;
             }
+        }
+
+        getJailError() {
+           var val = this[jail_primitive];
+           if(!val) return null;
+           if(val instanceof JailError) return val;
+           if(!(val instanceof Error)) return null;
+           return new JailError(val, val.message, this);
         }
         /**
          * Returns true if this object is the root object

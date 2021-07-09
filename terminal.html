@@ -37,7 +37,8 @@
                     });
                     return null;
                 } else if(result instanceof Error) {
-                    return String(result);
+                    if(result instanceof JailError && result.cause) return String(result.cause);
+                    else return String(result);
                 } else if(typeof result == 'object') {
                     if(result == null) return 'null';
                     if(result instanceof Array) {
@@ -115,7 +116,7 @@
                         var line = this.lineBuffer;
                         if (line != "") {
                             var me = this;
-                            jail.execute(line).then(async function(result) {
+                            jail.execute("/*# sourceMappingURL=JS terminal*/" + line).then(async function(result) {
                                 me.log(await convert_variable_to_string(result));
                                 me.prompt();
                             }, async function(ex) {
@@ -148,8 +149,8 @@
                     jail = new JailJS();
                     root = jail.root;
                     jail.onTerminate().then(setupJail);
-                    root.set('notify', console.log);
-                    jail.execute(`String.prototype.formatUnicorn = String.prototype.formatUnicorn ||
+                    jail.execute(`/*# sourceMappingURL=formatUnicorn*/
+                        String.prototype.formatUnicorn = String.prototype.formatUnicorn ||
                         function () {
                             "use strict";
                             if (arguments.length) {
@@ -175,7 +176,7 @@
                                return str;
                             } else return this.toString();
                     }; String.prototype.format = String.prototype.format || String.prototype.formatUnicorn;`);
-                    (await jail.execute(`
+                    (await jail.execute(`/*# sourceMappingURL=Jail console*/
                         (log, newLine, clear, close) => {
                             function format(data) {
                                 if(!(data instanceof Array)) data = [data];
@@ -217,7 +218,7 @@
                                 trace(...data) { if(indents) log(indents); log('[trace]\\n'); consoleLog((new Error()).stack.split('\\n').slice(1).map(x => x.trim()).filter(x => x).map(x => indents + '  ' + x).join('\\n')); log('\\n'); },
                                 print(str) { log(str); },
                                 clear() { clear(); },
-                                close() { close(); },
+                                close(msg) { close(msg || "Jail terminated by jailed code"); },
                                 table(data) {
                                     if(!(data instanceof Array)) data = [data];
                                     newLine();
@@ -257,9 +258,9 @@
                             };
                             self.console.groupCollapsed = self.console.group;
                             self.console.dirxml = self.console.dir;
-                            self.print = msg => {log(msg); log('\\n');};
+                            self.print = msg => {log(msg); newLine(); };
                             self.clear = () => void clear();
-                            self.close = () => void close();
+                            self.close = msg => void close(msg || "Jail terminated by jailed code");
                             self.debug = debugLog;
                         }
                     `)).invoke([(async function(data) {
@@ -270,6 +271,58 @@
                         term.clear();
                         term.prompt();
                     }), msg => jail.forceTerminate(msg)]);
+                    root.set("loadFile", file_name => {
+                        if(typeof file_name != 'string') throw new TypeError("Argument needs to be a string");
+                        if(file_name.includes("..") || !/^[a-zA-Z0-9.]$/.test(file_name)) throw new TypeError("Invalid file name");
+                        return new Promise((resolve, reject) => {
+                            var xhr = new XMLHttpRequest();
+                            xhr.open("GET", file_name);
+                            xhr.setRequestHeader("Accept", "text/plain, application/json, text/xml");
+                            xhr.onreadystatechange = function() {
+                                if(xhr.readyState == 0) {
+                                    xhr.onreadystatechange = null;
+                                    try { xhr.abort(); } catch(ex) {}
+                                    reject(new Error("HTTP request failed, internal/network error"));
+                                } else if(xhr.readyState >= 2 && (xhr.status < 200 || xhr.status >= 300)) {
+                                    xhr.onreadystatechange = null;
+                                    try { xhr.abort(); } catch(ex) {}
+                                    reject(new Error("HTTP request failed, code: " + xhr.status + " " + xhr.statusText));
+                                } else if(xhr.readyState == 4) {
+                                    xhr.onreadystatechange = null;
+                                    resolve(xhr.responseText);
+                                }
+                            };
+                            xhr.send();
+                        });
+                    });
+                    root.set("loadScript", file_name => {
+                        if(typeof file_name != 'string') throw new TypeError("Argument needs to be a string");
+                        if(file_name.includes("..") || !/^[a-zA-Z0-9.]$/.test(file_name)) throw new TypeError("Invalid file name");
+                        return new Promise((resolve, reject) => {
+                            var xhr = new XMLHttpRequest();
+                            xhr.open("GET", file_name);
+                            xhr.setRequestHeader("Accept", "text/javascript, application/javascript, text/ecmascript, application/ecmascript");
+                            xhr.onreadystatechange = function() {
+                                if(xhr.readyState == 0) {
+                                    xhr.onreadystatechange = null;
+                                    try { xhr.abort(); } catch(ex) {}
+                                    reject(new Error("HTTP request failed, internal/network error"));
+                                } else if(xhr.readyState >= 2 && (xhr.status < 200 || xhr.status >= 300)) {
+                                    xhr.onreadystatechange = null;
+                                    try { xhr.abort(); } catch(ex) {}
+                                    reject(new Error("HTTP request failed, code: " + xhr.status + " " + xhr.statusText));
+                                } else if(xhr.readyState == 4) {
+                                    xhr.onreadystatechange = null;
+                                    try {
+                                       resolve(jail.execute("/*# sourceMappingURL=" + file_name + "*/" + xhr.responseText));
+                                    } catch(ex) {
+                                        reject(ex);
+                                    }
+                                }
+                            };
+                            xhr.send();
+                        });
+                    });
                     if(!term_opened) term.open();
                     else term.prompt();
                     term_opened = true;
