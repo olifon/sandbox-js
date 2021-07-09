@@ -613,6 +613,7 @@
 
         /* Root for the code from the messages */
         data = {
+            self: self,
             objs: {0: self, 1: apis}, 
             global: self, 
             count: 2, 

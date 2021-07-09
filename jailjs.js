@@ -1,10 +1,37 @@
 class JailError extends Error {}
 class JailTerminatedError extends JailError {}
+/*
+  This class wraps promises from the Jailed environment.
+  It is needed because you cannot let a promise return an another promise (without chaining).
+
+  For example: Promise.resolve(Promise.resvolve("Hello")) will resolve to "Hello" and not a Promise.
+  This is because of how the chaining in Promises works.
+  To prevent chaining of the promises that jailed functions returns with the promises from the API, a wrapper is used.
+*/
 class JailPromise {
     constructor(promise) {
+        //We must prevent an uncaught error in the main if the jailed environment returned a promise
         if(promise instanceof JailPromise) promise = promise.value;
         if(!(promise instanceof Promise)) throw new TypeError('The promise argument needs to be a Promise');
         Object.defineProperty(this, 'value', {enumerable: true, configurable: false, writable: false, value: promise});
+        var success = false;
+        var error = false;
+        Object.defineProperty(this, "success", {get: () => success, set: () => success, configurable: false});
+        Object.defineProperty(this, "error", {get: () => error, set: () => error, configurable: false});
+        promise.then(() => success = true, () => error = true);
+    }
+
+    //we may NOT add a THEN function, because then JS will see our object as a promise-like object and will chain it.
+    finish(...args) {
+        return this.value.then(...args);
+    }
+
+    except(...args) {
+        return this.value.catch(...args);
+    }
+
+    finally(...args) {
+        return this.value.finally(...args);
     }
 }
 (function() {
@@ -743,7 +770,7 @@ class JailPromise {
                 str += ',bind:(' + fromValue(this[jail_eval], bind) + ')';
             } else {
                 if(name == '' || (name instanceof Array && name.length < 1)) {
-                    str += ',bind:self'
+                    str += ',bind:this.self'
                 } else {
                     str += ',bind:(' + getFieldLocation(this, thisLocation) + ')';
                 }

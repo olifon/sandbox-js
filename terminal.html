@@ -148,41 +148,132 @@
                     jail = new JailJS();
                     root = jail.root;
                     jail.onTerminate().then(setupJail);
-                    var console = await jail.createEmptyObject();
-                    //because of the jail api, all actions are executed in order.
-                    //we only have to set 'await' on jail.execute, because then we also know that the other
-                    //requests already have been executed.
-                    console.set('log', function(r) {(async function() {
-                        if(typeof r == 'string') {
-                            term.log(r);
-                        } else term.log(await convert_variable_to_string(r));
-                    })()});
-                    console.set('error', function(r) {(async function() {
-                        if(typeof r == 'string') {
-                            term.log('[error] ' + r);
-                        } else term.log('[error] ' + await convert_variable_to_string(r));
-                    })()});
-                    console.set('warn', function(r) {(async function() {
-                        if(typeof r == 'string') {
-                            term.log('[warning] ' + r);
-                        } else term.log('[warning] ' + await convert_variable_to_string(r));
-                    })()});
-                    console.set('debug', function(r) {(async function() {
-                        if(typeof r == 'string') {
-                            term.log('[debug] ' + r);
-                        } else term.log('[debug] ' + await convert_variable_to_string(r));
-                    })()});
-                    root.defineProperty('console', {enumerable: false, configurable: true, writable: true, value: console});
-                    root.defineProperty('close', {enumerable: false, configurable: true, writable: true, value: (function() {
-                        jail.forceTerminate("The jail has been terminated by the jailed code.");
-                    })});
-                    await jail.execute(
-                    "(function() {var debug = self.console.debug; var Error = self.Error; console.trace = function() {debug((new Error()).stack);}})();"
-                    );
+                    root.set('notify', console.log);
+                    jail.execute(`String.prototype.formatUnicorn = String.prototype.formatUnicorn ||
+                        function () {
+                            "use strict";
+                            if (arguments.length) {
+                               var ind = 0;
+                               var str = "";
+                               var arr = this.toString().split(/\\%[a-zA-Z0-9]/gi);
+                               var last = arr.pop();
+                               for(var item of arr) str += item + "{" + String(ind++) + "}";
+                               str += last;
+                               str = str.split("%%").join("%");
+                               var t = typeof arguments[0];
+                               var key;
+                               var args = ("string" === t || "number" === t) ?
+                                   Array.prototype.slice.call(arguments)
+                                    : arguments[0];
+                               var keys = Object.keys(args).map(x => !isNaN(Number(x)) ? Number(x) : x);
+                               keys.sort();
+                               for (key of keys) {
+                                   var nstr = str.replace(new RegExp("\\\\{" + key + "\\\\}", "gi"), args[key]);
+                                   if(nstr == str) str += " " + args[key];
+                                   else str = nstr;
+                               }
+                               return str;
+                            } else return this.toString();
+                    }; String.prototype.format = String.prototype.format || String.prototype.formatUnicorn;`);
+                    (await jail.execute(`
+                        (log, newLine, clear, close) => {
+                            function format(data) {
+                                if(!(data instanceof Array)) data = [data];
+                                for(var d of data) if(typeof d != 'string') return [].concat(...data.map(x => [x, ' '])).slice(0, -1);
+                                if(data.length < 2) return data;
+                                return [data[0].formatUnicorn(...data.slice(1))];
+                            }
+                            var indents = "";
+                            function consoleLog(...data) {
+                                if(indents) log(indents); 
+                                var formatted = format(data);
+                                for(var item of formatted) {
+                                    if(typeof item == 'string') {
+                                      var lines = item.split('\\n').filter(x => x);
+                                      if(lines.length < 1) return;
+                                      var last = lines.pop();
+                                      for(var line of lines) {
+                                        if(line) log(line);
+                                        newLine();
+                                        if(indents) log(indents);
+                                      }
+                                      if(last) log(last);
+                                    } else log(item);
+                                }
+                                newLine();
+                            }
+                            function debugLog(...data) { log('[debug] '); consoleLog(...data); }
+                            var labels = {};
+                            var timers = {};
+                            self.console = {
+                                log: consoleLog,
+                                info: consoleLog,
+                                error(...data) { log('[error] '); consoleLog(...data); },
+                                warn(...data) { log('[warn] '); consoleLog(...data); },
+                                assert(cond, ...data) { if(!cond) { log('[assert] '); consoleLog(...data); } },
+                                count(label) { if(!label) label = "default"; label = String(label); if(!labels[label]) labels[label] = 1; consoleLog(label + ": " + labels[label]++); },
+                                countReset(label) { if(!label) label = "default"; label = String(label); if(delete labels[label]) consoleLog(label + ": reseted"); }, 
+                                debug: debugLog,
+                                trace(...data) { if(indents) log(indents); log('[trace]\\n'); consoleLog((new Error()).stack.split('\\n').slice(1).map(x => x.trim()).filter(x => x).map(x => indents + '  ' + x).join('\\n')); log('\\n'); },
+                                print(str) { log(str); },
+                                clear() { clear(); },
+                                close() { close(); },
+                                table(data) {
+                                    if(!(data instanceof Array)) data = [data];
+                                    newLine();
+                                    if(indents) log(indents);
+                                    var props = [];
+                                    for(var item of data) {
+                                       for(var key in item) if(!props.includes(key)) props.push(key);
+                                    }
+                                    log("index\t");
+                                    for(var prop of props) { log(prop); log("\t"); };
+                                    newLine();
+                                    var i = 0;
+                                    for(var item of data) {
+                                       if(indents) log(indents);
+                                       log(String(i) + "\t");
+                                       for(var prop of props) { log(item[prop]); log("\t"); }
+                                       newLine();
+                                    }
+                                    return undefined;
+                                }, 
+                                time(label) { if(!label) label = "default"; label = String(label); timers[label] = Date.now(); consoleLog("Timer " + label + ": started"); },
+                                timeEnd(label) { if(!label) label = "default"; label = String(label); if(!timers[label]) return; consoleLog("Timer " + label + " finished: " + String(Date.now() - timers[label]) + "ms"); delete timers[label]; },
+                                timeLog(label) { if(!label) label = "default"; label = String(label); if(!timers[label]) return; consoleLog("Timer " + label + ": " + String(Date.now() - timers[label]) + "ms"); }, 
+                                get indents() { return indents.length; },
+                                set indents(value) { value = Number(value); if(isNaN(value)) return; indents = ""; for(var i = 0; i < value; i++) indents += " "; },
+                                group(label) {
+                                    consoleLog(String(label) + ": ");
+                                    indents += "  ";
+                                },
+                                groupEnd() {
+                                    if(indents.length < 2) indents = "";
+                                    else indents = indents.substr(0, indents.length - 2);
+                                },
+                                newLine() { newLine(); },
+                                dir(...data) { consoleLog(...data.map(x => typeof x == 'string' ? JSON.stringify(x) : x)); },
+                                format
+                            };
+                            self.console.groupCollapsed = self.console.group;
+                            self.console.dirxml = self.console.dir;
+                            self.print = msg => {log(msg); log('\\n');};
+                            self.clear = () => void clear();
+                            self.close = () => void close();
+                            self.debug = debugLog;
+                        }
+                    `)).invoke([(async function(data) {
+                        console.log(data);
+                        if(typeof data == 'string') term.write(data);
+                        else term.write(await convert_variable_to_string(data));
+                    }), () => term.newLine(), (function() {
+                        term.clear();
+                        term.prompt();
+                    }), msg => jail.forceTerminate(msg)]);
                     if(!term_opened) term.open();
                     else term.prompt();
                     term_opened = true;
-                }
+                };
                 setupJail();
             })();         
 
