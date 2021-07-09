@@ -639,7 +639,7 @@ class JailPromise {
         } else if(value instanceof Error) {
             var type = 'Error';
             var errors = { EvalError, RangeError, ReferenceError, SyntaxError, TypeError, AggregateError: self.AggregateError, InternalError: self.InternalError };
-            for(var cls of errors) {
+            for(var cls in errors) {
                 try {
                     if(value instanceof errors[cls]) {
                         type = cls;
