@@ -196,32 +196,68 @@
                 bind
             },
         }
+        var addEventListener = self.addEventListener;
         /**
          * The webworker can do more then the jailed code is privileged to do.
          * The jailed code can only execute functions from VM that only has impact on their own stuff. (like substring)
          * 
          * You can allow more by copying the values from apis.
          */
-        var whitelist = ["Object","Function","Array","Number","parseFloat","parseInt","Infinity","NaN","undefined","Boolean","String","Symbol","Date","Promise","RegExp","Error","EvalError","RangeError","ReferenceError","SyntaxError","TypeError","URIError","JSON","Math","Intl","ArrayBuffer","Uint8Array","Int8Array","Uint16Array","Int16Array","Uint32Array","Int32Array","Float32Array","Float64Array","Uint8ClampedArray","BigUint64Array","BigInt64Array","DataView","Map","BigInt","Set","WeakMap","WeakSet","Proxy","Reflect","decodeURI","decodeURIComponent","encodeURI","encodeURIComponent","escape","unescape","eval","isFinite","isNaN","SharedArrayBuffer","Atomics","globalThis","self","WebAssembly"];
+        //Temporary and persistent are constants that cannot be redefined
+        var whitelist = ["Object","Function","Array","Number","parseFloat","parseInt","Infinity","NaN","undefined","Boolean","String","Symbol","Date","Promise","RegExp","Error","EvalError","RangeError","ReferenceError","SyntaxError","TypeError","URIError","JSON","Math","Intl","ArrayBuffer","Uint8Array","Int8Array","Uint16Array","Int16Array","Uint32Array","Int32Array","Float32Array","Float64Array","Uint8ClampedArray","BigUint64Array","BigInt64Array","DataView","Map","BigInt","Set","WeakMap","WeakSet","Proxy","Reflect","decodeURI","decodeURIComponent","encodeURI","encodeURIComponent","escape","unescape","eval","isFinite","isNaN","SharedArrayBuffer","Atomics","globalThis","self","WebAssembly", "TEMPORARY", "PERSISTENT"];
         var blacklist = ["onmessage", "onmessageerror", "postMessage"];
         var root_keys = Object.getOwnPropertyNames(self);
         var root_length = root_keys.length;
+        apis.addEventListener = (...args) => {
+            if(args.length < 2) return;
+            if(String(args[0]) == "message") return;
+            return addEventListener(...args);
+        };
         for(var i = 0; i < root_length; i++) {
             var key = root_keys[i];
             if(blacklist.includes(key)) {
-                try {
-                    self[key] = undefined;
-                    delete self[key];
-                } catch(ex) {}
+                if(Object.getOwnPropertyDescriptor(self, key)) {
+                    try {
+                        Object.defineProperty(self, key, {value: undefined, configurable: true, enumerable: false, writable: true});
+                    } catch(ex) { Promise.reject(ex); }
+                    try { delete self[key] } catch(ex) {}
+                }
                 continue;
             }
             if(whitelist.includes(key)) continue;
             if(key == null) continue;
             apis[key] = self[key];
+            if(Object.getOwnPropertyDescriptor(self, key)) {
+                try {
+                    Object.defineProperty(self, key, {value: undefined, configurable: true, enumerable: false, writable: true});
+                } catch(ex) { Promise.reject(ex); }
+                try { delete self[key] } catch(ex) {}
+            }
+
+        }
+        //prototype chain bug. if you delete a property, the prototype property is not deleted so you have access to that.
+        var proto = self;
+        while(proto && proto != Object.prototype) {
             try {
-                self[key] = undefined;
-                delete self[key];
-            } catch(ex) {}
+               Object.setPrototypeOf(proto, Object);
+               break;
+            } catch(ex) {
+               proto = Object.getPrototypeOf(proto);
+               if(!proto || proto == Object.prototype) break;
+               root_keys = Object.getOwnPropertyNames(proto);
+               root_length = root_keys.length;
+               for(var i = 0; i < root_length; i++) {
+                   var key = root_keys[i];
+                   if(key == null) continue;
+                   if(whitelist.includes(key)) continue;
+                   if(Object.getOwnPropertyDescriptor(proto, key)) {
+                      try {
+                          Object.defineProperty(proto, key, {value: undefined, configurable: true, enumerable: false, writable: true});
+                      } catch(ex) { Promise.reject(ex); }
+                      try { delete proto[key] } catch(ex) {}
+                   }
+               }
+            }
         }
         //edits to apis is allowed.
     })();
@@ -335,7 +371,8 @@
                     for(var i = 0; i < len; i++) {
                         var key = keys[i];
                         if(key == undefined) continue;
-                        var v = value[key];
+                        var v = undefined;
+                        try{ v = value[key]; } catch(ex){}
                         if(i > 0) str += ',';
                         str += valueToMessage(key) + ':' + valueToMessage(deep ? new StaticType(v, true) : v);
                     }
@@ -353,7 +390,8 @@
                     for(var i = 0; i < len; i++) {
                         var key = keys[i];
                         if(key == undefined) continue;
-                        var v = value[key];
+                        var v = undefined;
+                        try { v = value[key]; } catch(ex) {}
                         if(i > 0) str += ',';
                         str += valueToMessage(key) + ':' + valueToMessage(deep ? new StaticType(v, true) : v);
                     }
@@ -381,7 +419,8 @@
                     for(var i = 0; i < len; i++) {
                         var key = keys[i];
                         if(key == undefined) continue;
-                        var v = value[key];
+                        var v = undefined;
+                        try { v = value[key]; } catch(ex) {}
                         if(i > 0) str += ',';
                         str += valueToMessage(key) + ':' + valueToMessage(deep ? new StaticType(v, true) : v);
                     }
@@ -409,7 +448,8 @@
                     for(var i = 0; i < len; i++) {
                         var key = keys[i];
                         if(key == undefined) continue;
-                        var v = value[key];
+                        var v = undefined;
+                        try { v = value[key]; } catch(ex) {}
                         if(i > 0) str += ',';
                         str += valueToMessage(key) + ':' + valueToMessage(deep ? new StaticType(v, true) : v);
                     }
@@ -488,7 +528,8 @@
                     for(var i = 0; i < len; i++) {
                         var key = keys[i];
                         if(key == undefined) continue;
-                        var v = value[key];
+                        var v = undefined;
+                        try { v = value[key]; } catch(ex) {}
                         if(i > 0) str += ',';
                         str += valueToMessage(key) + ':' + valueToMessage(deep ? new StaticType(v, true) : v);
                     }
@@ -524,7 +565,8 @@
                     for(var i = 0; i < len; i++) {
                         var key = keys[i];
                         if(key == undefined) continue;
-                        var v = value[key];
+                        var v = undefined;
+                        try { v = value[key]; } catch(ex) {}
                         if(i > 0) str += ',';
                         str += valueToMessage(key) + ':' + valueToMessage(deep ? new StaticType(v, true) : v);
                     }
