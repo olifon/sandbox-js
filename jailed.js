@@ -239,7 +239,7 @@
         var proto = self;
         while(proto && proto != Object.prototype) {
             try {
-               Object.setPrototypeOf(proto, Object);
+               Object.setPrototypeOf(proto, Object.prototype);
                break;
             } catch(ex) {
                proto = Object.getPrototypeOf(proto);
