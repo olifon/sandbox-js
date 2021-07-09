@@ -87,6 +87,7 @@
             else return apply(_f_to_string, [this]);
         };
         Function.prototype.toString.toString = function() {return _f_str};
+        Function.prototype.toString.toString[Symbol.toStringTag] = _f_str;
         root = {
             String: function(str) {
                 if(str instanceof _String) {
@@ -110,6 +111,7 @@
             Boolean,
             Error,
             TypeError,
+            toStringTag: Symbol.toStringTag,
             errors: { EvalError, RangeError, ReferenceError, SyntaxError, TypeError, AggregateError: self.AggregateError, InternalError: self.InternalError },
             GeneratorFunction: Object.getPrototypeOf(function*(){}).constructor,
             AsyncFunction: Object.getPrototypeOf(async function(){}).constructor,
@@ -206,7 +208,7 @@
         //Temporary and persistent are constants that cannot be redefined
         var whitelist = ["Object","Function","Array","Number","parseFloat","parseInt","Infinity","NaN","undefined","Boolean","String","Symbol","Date","Promise","RegExp","Error","EvalError","RangeError","ReferenceError","SyntaxError","TypeError","URIError","JSON","Math","Intl","ArrayBuffer","Uint8Array","Int8Array","Uint16Array","Int16Array","Uint32Array","Int32Array","Float32Array","Float64Array","Uint8ClampedArray","BigUint64Array","BigInt64Array","DataView","Map","BigInt","Set","WeakMap","WeakSet","Proxy","Reflect","decodeURI","decodeURIComponent","encodeURI","encodeURIComponent","escape","unescape","eval","isFinite","isNaN","SharedArrayBuffer","Atomics","globalThis","self","WebAssembly", "TEMPORARY", "PERSISTENT"];
         var blacklist = ["onmessage", "onmessageerror", "postMessage"];
-        var root_keys = Object.getOwnPropertyNames(self);
+        var root_keys = Object.getOwnPropertyNames(self).concat(Object.getOwnPropertySymbols(self) || []);
         var root_length = root_keys.length;
         apis.addEventListener = (...args) => {
             if(args.length < 2) return;
@@ -244,7 +246,7 @@
             } catch(ex) {
                proto = Object.getPrototypeOf(proto);
                if(!proto || proto == Object.prototype) break;
-               root_keys = Object.getOwnPropertyNames(proto);
+               root_keys = Object.getOwnPropertyNames(proto).concat(Object.getOwnPropertySymbols(proto) || []);
                root_length = root_keys.length;
                for(var i = 0; i < root_length; i++) {
                    var key = root_keys[i];
@@ -259,6 +261,9 @@
                }
             }
         }
+        proto = Object.getPrototypeOf(self);
+        if(proto == Object.prototype) self[Symbol.toStringTag] = "JailedGlobal";
+        else proto[Symbol.toStringTag] = "JailedGlobal";
         //edits to apis is allowed.
     })();
     
