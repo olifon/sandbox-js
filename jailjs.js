@@ -638,7 +638,7 @@ class JailPromise {
             return '(this.objs[' + String(value[jail_index]) + '])';
         } else if(value instanceof Error) {
             var type = 'Error';
-            var errors = { EvalError, RangeError, ReferenceError, SyntaxError, TypeError, AggregateError: AggregateError ?? null, InternalError: InternalError ?? null };
+            var errors = { EvalError, RangeError, ReferenceError, SyntaxError, TypeError, AggregateError: self.AggregateError, InternalError: self.InternalError };
             for(var cls of errors) {
                 try {
                     if(value instanceof errors[cls]) {
