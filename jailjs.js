@@ -790,6 +790,13 @@ class JailPromise {
         }
         return str;
     }
+    /**
+     * This object represents a JS Map in the jailed environment.
+     * You can manipulate that map asynchronously with functions from this class.
+     * 
+     * This class is always linked with a JailObject (.object)
+     * You can obtain the JailMap from a JailObject with the valueOf()
+     */
     self.JailMap = class {
         constructor(secret, j_eval, index) {
             if (!(secret === wrapper_secret))
@@ -800,38 +807,82 @@ class JailPromise {
             Object.defineProperty(this, "object", { configurable: false, enumerable: false, writable: false, value: toJailObject(j_eval, index, this) });
         }
 
+        /**
+         * Get a value by its key
+         * @param {*} key The key that identifies the value 
+         * @returns {Promise<*>} The value
+         */        
         get(key) {
-            return this[jail_eval]('return this.util.map.get(this.objs[' + String(this[jail_index]) + ']);');
+            return this[jail_eval]('return this.util.map.get(this.objs[' + String(this[jail_index]) + '],(' + fromValue(this[jail_eval, key]) + '));');
         }
 
+        /**
+         * Add a new value to the map, identified by a key
+         * @param {*} key The key for the new value
+         * @param {*} value The new value
+         * @returns {Promise<JailObject>} The map (as JailObject)
+         */
         set(key, value) {
             return this[jail_eval]('return this.util.map.set(this.objs[' + String(this[jail_index]) + '],(' + fromValue(this[jail_eval], key) + '),(' + fromValue(this[jail_eval], value) + '));');
         }
 
+        /**
+         * Checks if the map has a key
+         * @param {*} key the key
+         * @returns {Promise<boolean>} If the map has this key
+         */
         has(key) {
             return this[jail_eval]('return this.util.map.has(this.objs[' + String(this[jail_index]) + '],(' + fromValue(this[jail_eval], key) + '));');
         }
 
+        /**
+         * Deletes a value (identified by a key) from the map.
+         * @param {*} key the key (with value) to remove
+         * @returns {Promise<boolean>} if the key is removed
+         */
         delete(key) {
             return this[jail_eval]('return this.util.map.delete(this.objs[' + String(this[jail_index]) + '],(' + fromValue(this[jail_eval], key) + '));');
         }
 
+        /**
+         * Get an array of all keys in this map
+         * @returns {Promise<Array>} An array with all keys
+         */
         keys() {
             return this[jail_eval]('return this.static(this.util.map.keys(this.objs[' + String(this[jail_index]) + ']), false);');
         }
 
+        /**
+         * Get an array of all values in this map
+         * @returns {Promise<Array>} An array with all values
+         */
         values() {
             return this[jail_eval]('return this.static(this.util.map.values(this.objs[' + String(this[jail_index]) + ']), false);');
         }
 
+        /**
+         * Get an array of all entries (inner array [key, value]) in this map
+         * @returns {Promise<[any, any][]>} An array with the entries. each entry is an array with two items: the key and the value
+         */
         entries() {
             return this[jail_eval]('return this.static(this.util.mapArray(this.util.map.entries(this.objs[' + String(this[jail_index]) + ']), x => this.static(x, false)), false);');
         }
 
-        toString() {
-            return this.object.toString();
+        /**
+         * Get a string representation for this Map
+         * @returns {Promise<string>} a human readable string
+         */
+        objectToString() {
+            return this.object.objectToString();
         }
     };
+    /**
+     * This class represents a JS Set in the jailed environment.
+     * You can manipulate asynchronously with functions from this class
+     * 
+     * This class is always linked with a JailObject (.object)
+     * You can obtain a JailSet from a JailObject with the valueOf()
+     */
     self.JailSet = class {
         constructor(secret, j_eval, index) {
             if (!(secret === wrapper_secret))
@@ -842,24 +893,47 @@ class JailPromise {
             Object.defineProperty(this, "object", { configurable: false, enumerable: false, writable: false, value: toJailObject(j_eval, index, this) });
         }
 
+        /**
+         * Add a value to this set, if it does not exist
+         * @param {*} value the value to add
+         * @returns {Promise<JailObject>} this set as a JailObject 
+         */
         add(value) {
             return this[jail_eval]('return this.util.set.add(this.objs[' + String(this[jail_index]) + '],(' + fromValue(this[jail_eval], value) + '));');
         }
 
+        /**
+         * Checks if this set has a value
+         * @param {*} value the value to check
+         * @returns {Promise<boolean>} if this set has that value
+         */
         has(value) {
             return this[jail_eval]('return this.util.set.has(this.objs[' + String(this[jail_index]) + '],(' + fromValue(this[jail_eval], value) + '));');
         }
 
+        /**
+         * Deletes a value from this set
+         * @param {*} value the value to remove
+         * @returns {Promise<boolean>} if the value is removed 
+         */
         delete(value) {
             return this[jail_eval]('return this.util.set.delete(this.objs[' + String(this[jail_index]) + '],(' + fromValue(this[jail_eval], value) + '));');
         }
 
+        /**
+         * Get an array with all the values
+         * @returns {Promise<Array>} An array with all the values in this set
+         */
         values() {
             return this[jail_eval]('return this.static(this.util.set.values(this.objs[' + String(this[jail_index]) + ']), false);');
         }
 
-        toString() {
-            return this.object.toString();
+        /**
+         * Get a string representation for this Set
+         * @returns {Promise<string>} a human readable string
+         */
+        objectToString() {
+            return this.object.objectToString();
         }
     };
     self.JailObject = class {
@@ -1305,12 +1379,24 @@ class JailPromise {
             return this[jail_eval]('return this.util.setPrototypeOf(this.objs[' + String(this[jail_index]) + '], ' + fromValue(this[jail_eval], prototype) + ')');
         }
 
-        toString() {
+
+        /**
+         * Get a human-readable string representation of this JailObject
+         * 
+         * @returns {Promise<String>} the string that represents this object. It can be logged
+         */
+        objectToString() {
             return JailJS.variableToString(this);
         }
 
     };
     self.JailJS = class {
+        /**
+         * Construct a new Jailed environment. It will be created immediately.
+         * You do not have to wait before it is ready (or you can use .onReady() that returns a Promise)
+         * 
+         * You can get the global of the jailed environment with .root
+         */
         constructor() {
 
             var value_callbacks = [];
@@ -1810,6 +1896,12 @@ class JailPromise {
             return this[jail_eval].onTerminate;
         }
     };
+    /**
+     * Resolve the value asynchronously and returns a string representation for that value
+     * @param {*} result the result to resolve
+     * @param {(JailPromise => (string|Promise<string>))} promiseHandler a handler for promises, useful for interactive terminals where the text can be changed if a promises resolves (optional)
+     * @returns {Promise<string>} A human readable string containg the information for this object
+     */
     self.JailJS.variableToString = async function variableToString(result, promiseHandler) {
         if (typeof result == 'undefined') return 'undefined';
         else if (result == null) return 'null';
