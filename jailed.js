@@ -547,7 +547,7 @@
                     return JSON.stringify(value);
                 }
             } else if(typeof value == 'bigint') {
-                return 'BigInt(' + String(value) + ')';
+                return 'BigInt(' + JSON.stringify(String(value)) + ')';
             } else if (typeof value == 'function') {
                 var index = null;
                 var objkeys = util.keys(data.objs);
@@ -678,7 +678,7 @@
                 if (isStatic) {
                     var keys = util.keys(value);
                     var len = util.arrayLength(keys);
-                    var str = "BigIntObject(" + String(value) + ",{";
+                    var str = "BigIntObject(" + JSON.stringify(String(value)) + ",{";
                     for (var i = 0; i < len; i++) {
                         var key = keys[i];
                         if (key == undefined) continue;
@@ -701,7 +701,7 @@
                     }
                     if (index == null) index = data.count++;
                     data.objs[index] = value;
-                    return "BigIntObject(" + String(index) + "," + String(value) + ")";
+                    return "BigIntObject(" + String(index) + "," + JSON.stringify(String(value)) + ")";
                 }
             } else if (value instanceof Date) {
                 if (isStatic) {

@@ -415,7 +415,7 @@ class JailPromise {
                     }
                 }
                 var value = index;
-                var primitive = new BigInt(value);
+                var primitive = Object(BigInt(value));
                 if (isNext) {
                     if (!assign_object_from_value(jaileval, tokenizer, primitive)) throw jail_error();
                 }
@@ -700,6 +700,8 @@ class JailPromise {
             return '(new this.root.StringType(' + JSON.stringify(String(value)) + '))';
         } else if (value instanceof Number) {
             return '(new this.root.Number(' + String(value) + '))';
+        } else if (value instanceof BigInt) {
+            return '(this.root.Object(this.root.BigInt(' + String(value) + ')))';
         } else if (value instanceof Symbol) {
             var index;
             value = value.valueOf();
@@ -1840,6 +1842,9 @@ class JailPromise {
                 if (result instanceof Number) {
                     str = '{' + String(result);
                     first = false;
+                } else if (result instanceof BigInt) {
+                    str = '{' + String(result) + 'n';
+                    first = false;
                 } else if (result instanceof String) {
                     str = '{' + JSON.stringify(String(result));
                     first = false;
@@ -1891,6 +1896,8 @@ class JailPromise {
             result = result.toString();
         } else if (typeof result == 'string') {
             return JSON.stringify(result);
+        } else if(typeof result == 'bigint') {
+            return String(result) + 'n';
         } else {
             result = String(result);
         }
