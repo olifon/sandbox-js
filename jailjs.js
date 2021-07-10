@@ -905,6 +905,17 @@ class JailPromise {
             return this[jail_eval]('return delete ' + getFieldLocation(this, name) + ';')
         }
 
+
+        /**
+         * Remove this object from the object list, after deletion you cannot use it anymore
+         * 
+         * CAUTION! if you delete things like promises or functions, there is a chance that errors will be thrown when invoked.
+         * @returns {Promise<boolean>} true if deleted, false if not
+         */
+        remove() {
+            return this[jail_eval]('return delete this.objs[' + this[jail_index] + '];').then(x => x ? delete this[jail_eval].objs[this[jail_index]] : false);
+        }
+
         /**
          * Returns true if the field is in this object.
          * @param {string|symbol|Array} name
@@ -1430,11 +1441,9 @@ class JailPromise {
                         prom.value.then(
                             function (r) {
                                 jaileval("this.objs[" + String(resolve_index) + "](" + fromValue(jaileval, r) + ");");
-                                delete jaileval.objs[index];
                             },
                             function (r) {
                                 jaileval("this.objs[" + String(reject_index) + "](" + fromValue(jaileval, r) + ");");
-                                delete jaileval.objs[index];
                             });
                         break;
                     case 'message':
