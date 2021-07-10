@@ -189,6 +189,8 @@ loadFile("test-file.txt") //Promise resolved "Lorum ipsum..."
 both functions use Network I/O on the main thread, that is asynchronous
 The function is made synchronously in the jail with loadFileSync
 
+NOTE: DO NOT COMPILE or BUNDLE jailed.js with tools like Webpack or Babel. Those tools introduce extra values to jailed.js that could leak some objects for the sandboxed code. It also add extra global values, change the closures etc, and a possible chance that jailed.js won't work anymore. Especially for the bundlers, those insert extra code that is not made to be run in a sandboxed environment. Because that code is always ran first, the chance is very high that it would expose a ton of objects to the sandboxed code. However, it is perfectly fine to bundle and compile jailjs.js (the script that runs on the main thread, because it does not execute any code, it only instructs the Worker to execute code), but do not bundle jailed.js. Edit your webpack config that jailed.js needs to be left unmodified. If you use bundlers, you may change the path to the jailed.js in jailjs.js. (jailedPath=)
+
 ## Benefits of chroot JS
 
 1. It is completely safe, the code runs in a completely seperated and isolated javascript context. It cannot access any of the variables from the main program. And it can neither access dangerous functions in the worker's global like postMessage.

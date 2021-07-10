@@ -1,4 +1,12 @@
 /*# sourceMappingURL=Jailed Core */
+/*
+    Do NOT bundle or compile this file. Those bundlers/compilers can modify the source code and possibly
+    add ton of extra variables to the script (and the sandboxed code). Change your webpack config that jailed.js
+    will not be compiled or bundled and stays the same (like a binary file.)
+
+    See also README.md
+*/
+
 /**
  * The code for the communication between the jail and the main program. (on the jail side)
  * will work in a closure. Why? Every important local value and function in this closure will not be accessible

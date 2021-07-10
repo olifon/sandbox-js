@@ -1,3 +1,14 @@
+/*
+    Code that runs on the main thread.
+    You can compile or bundle this script (jailjs.js) with tools like babel or webpack.
+    But DO not BUNDLE or COMPILE jailed.js
+
+    This script does not 'eval' or execute any sandboxed code, it only instructs the worker.
+    It also does not receive any javascript code from the worker (e.g object literals as JS), 
+    instead it safely parses the messages (with a special syntax) with its own parser.
+    This is not the case for data comming from the main thread (but it is allowed to execute code in the worker).
+*/
+can
 class JailError extends Error {
     constructor(innerError, message, obj) {
         super(message == null ? innerError : message);
