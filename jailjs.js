@@ -2015,7 +2015,15 @@ class JailPromise {
          * Disable synchronous API on the jail
          */
         disableSynchronousAPI() {
-            return this[jail_eval]("return this.disableSynchronousAPI();").then(() => this[jail_eval].data_buffer = null);
+            return this.onReady().then(() => this[jail_eval]("return this.disableSynchronousAPI();").then(() => this[jail_eval].data_buffer = null));
+        }
+
+        /**
+         * Check if Synchronous API is enabled
+         * @returns {boolean} if Syncronous API is enabled
+         */
+        get synchronousAPIEnabled() {
+            return this[jail_eval].data_buffer != null;
         }
 
         /**
