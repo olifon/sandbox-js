@@ -890,7 +890,7 @@
                     }
                     keys = util.keys(value);
                     len = util.arrayLength(keys);
-                    var str = "Map(" + valueToMessage(new StaticType(arr, deep)) + ",{";
+                    var str = "Map(" + valueToMessage(new StaticType(arr, false)) + ",{";
                     for (var i = 0; i < len; i++) {
                         var key = keys[i];
                         if (key == undefined) continue;

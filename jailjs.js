@@ -747,9 +747,9 @@ class JailPromise {
             for (var key of keys) {
                 arr.push([key, value.get(key)]);
             }
-            return '(new this.root.Map(' + fromValue(jaileval, arr) + ')';
+            return '(new this.root.Map(' + fromValue(jaileval, arr) + '))';
         } else if (value instanceof Date) {
-            return '(new this.root.Date(' + value.getTime() + ')';
+            return '(new this.root.Date(' + value.getTime() + '))';
         } else {
             var keys = Object.keys(value);
             var length = keys.length;

@@ -77,6 +77,49 @@ There is no point of grabing a object so that you can break out of the sandbox.
 Things like return new Function("return this") won't return the 'real' global, because there is no 'real' global.
 The code runs in a new global with its own context in a seperate thread, and not in (like other sandbox programs) in a closure.
 
+5. Most of the fuctions are disabled, only vanilla javascript functions (conform to Ecmascript specification) are enabled. This means that Network I/O, storage, Files and Blobs are disabled by default. You can enable them in the sandbox however, but it is not recommended. Untrusted code can make HTTP request with the cookies and authorization tokens from the user if you expose XMLHttpRequest for example. Expose nothing and make functions your self (with root.set(name, func)) which checks and sanitizes any input/output from the sandbox. (All of the built-in events are also disabled, except error, unhandledrejection and rejectionhandled. The sandbox can still create custom events and the event 'message' for an alternative communication between main and sandbox (see 7))
+
+6. Shared functions between the sandbox and the main will always return Promises (this is because Worker communication is asynchronous). If a API returns a promise (for example root.get('promise'), where promise is a variable containing a Promise) will return a JailPromise. This is to prevent chaining (a promise cannot return a promise without chaining). You can get the original promise with the .value property of a JailPromise.
+
+7. Worker-like message communication is also supported:
+```Javascript
+(async function() {
+    var jail = new JailJS();
+    var root = jail.root;
+
+    jail.addMessageListener(async m => console.log('Worker:', m instanceof JailObject ? await m.resolve(true) : m)); //we will resolve all objects
+    root.set('print', async (...d) => console.log(...(await Promise.all(d.map(z => z instanceof JailObject ? z.resolve() : z))))); //A console API is not exposed to the sandbox, by default. We need to create a print function
+    jail.execute("this.addEventListener('message', m => print('Main:', m.data))");
+
+    //anything that can be send with for example .set on objects can be sent using postMessage (and that is a lot of things including a JailObject)
+    jail.postMessage("Hello world");
+    jail.postMessage(new Date());
+    jail.postMessage({age: 100, name: 'javascript'})
+
+    var o = new Map();
+    o.set("X", "Y");
+    o.set("Y", "Z");
+    jail.postMessage(o);
+    
+    var obj = await jail.createEmptyMap();
+    var map = obj.valueOf(); //returns JailMap
+    map.set("A", "B");
+    map.set("C", "D");
+    jail.postMessage({map: obj, nested: true});
+    jail.execute('postMessage("Hello world");');
+    jail.execute('postMessage([1,2,3,4,5]);')
+    await jail.execute('postMessage(new Set([1,1,2,2,5,6,7]));');
+    //if you terminate, no new tasks can be performed
+    //to prevent race conditions, you could use await onReady()
+    //this waits untils the task buffer is empty and ALLOWS new tasks to be added.
+    //if you don't do this, and you would receive a message in the termination process. You cannot resolve the value because no new tasks can be performed.
+    await jail.onReady();
+    jail.terminate();
+})();
+```
+
+
+
 ## Benefits of chroot JS
 
 1. It is completely safe, the code runs in a completely seperated and isolated javascript context. It cannot access any of the variables from the main program. And it can neither access dangerous functions in the worker's global like postMessage.
