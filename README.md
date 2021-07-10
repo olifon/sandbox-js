@@ -177,6 +177,17 @@ Example:
 ```
 So if you make asynchronous function, synchronous for the jail, it is limited. You cannot use the jail API in those functions.
 
+You can test it with: 
+```javascript 
+loadFileSync("test-file.txt") //"Lorum ipsum..."
+```
+and
+```javascript
+loadFile("test-file.txt") //Promise resolved "Lorum ipsum..."
+```
+
+both functions use Network I/O on the main thread, that is asynchronous
+The function is made synchronously in the jail with loadFileSync
 
 ## Benefits of chroot JS
 
