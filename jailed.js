@@ -33,6 +33,9 @@
      * We can make more available, the other functions are stored in 'apis'
      */
     var apis = {};
+    var apiEvents = {};
+    var registerRootListener = () => {};
+    var rootEventTarget = null;
 
     /**
      * This closure fills the root object up with the required functions for the communication.
@@ -102,6 +105,11 @@
         var _map_get_entries = Map.prototype.entries;
         var _map_entry_next = Object.getPrototypeOf((new Map()).entries()[Symbol.iterator]()).next;
         var _map_array = Array.prototype.map;
+        var EventTarget = self.EventTarget;
+        var _event_dispatch = EventTarget ? (EventTarget.prototype.dispatchEvent ? EventTarget.prototype.dispatchEvent : null) : null;
+
+        var _array_get_iterator = Array.prototype[Symbol.iterator];
+        var _array_next = Object.getPrototypeOf([][Symbol.iterator]()).next;
         Function.prototype.toString = function() {
             if(this.toString === jailed_to_string) return apply(jailed_to_string, [this]);
             else if(this === _f_to_string || this === _f_to_string_string) return _f_str;
@@ -136,6 +144,10 @@
             Set,
             Map,
             Date,
+            Event: self.Event ? self.Event : null,
+            ErrorEvent: self.ErrorEvent ? self.ErrorEvent : null,
+            PromiseRejectionEvent: self.PromiseRejectionEvent ? self.PromiseRejectionEvent : null,
+            EventTarget: self.EventTarget ? self.EventTarget : null,
             toStringTag: Symbol.toStringTag,
             errors: { EvalError, RangeError, ReferenceError, SyntaxError, TypeError, AggregateError: self.AggregateError, InternalError: self.InternalError },
             GeneratorFunction: Object.getPrototypeOf(function*(){}).constructor,
@@ -154,6 +166,7 @@
             postMessage: bind(self.postMessage, self),
             removeEventListener: bind(self.removeEventListener, self),
             dispatchEvent: bind(self.dispatchEvent, self),
+            IteratorSymbol: _it_symbol,
             util: {
                 substring(str, start, end) {
                     return apply(_substring, [str, start, end]);
@@ -251,6 +264,15 @@
                 mapArray(arr, func) {
                     return apply(_map_array, [arr, func]);
                 },
+                arrayIterable(arr) {
+                    return {[_it_symbol]: () => ({next: bind(_array_next, apply(_array_get_iterator, [arr]))})};
+                },
+                dispatchEvent(target, ev) {
+                    if(!_event_dispatch) return;
+                    if(target === self) target = rootEventTarget;
+                    if(target == null || !(target instanceof root.EventTarget)) return; //EventTarget != null cuz _event_dispatch != null
+                    return apply(_event_dispatch, [target, ev]);
+                },
                 keys: bind(Object.keys, Object),
                 defineProperty: bind(Object.defineProperty, Object),
                 defineProperties: bind(Object.defineProperties, Object),
@@ -267,12 +289,14 @@
                 ObjectSeal: bind(Object.seal, Object),
                 ObjectPreventExtensions: bind(Object.preventExtensions, Object),
                 ObjectIsExtensible: bind(Object.isExtensible, Object),
+                ObjectAssign: bind(Object.assign, Object),
                 isNaN,
                 apply,
                 bind
             },
         }
         var addEventListener = self.addEventListener;
+        var undefined = root.undefined;
         /**
          * The webworker can do more then the jailed code is privileged to do.
          * The jailed code can only execute functions from VM that only has impact on their own stuff. (like substring)
@@ -280,10 +304,16 @@
          * You can allow more by copying the values from apis.
          */
         //Temporary and persistent are constants that cannot be redefined
-        var whitelist = ["Object","Function","Array","Number","parseFloat","parseInt","Infinity","NaN","undefined","Boolean","String","Symbol","Date","Promise","RegExp","Error","EvalError","RangeError","ReferenceError","SyntaxError","TypeError","URIError","JSON","Math","Intl","ArrayBuffer","Uint8Array","Int8Array","Uint16Array","Int16Array","Uint32Array","Int32Array","Float32Array","Float64Array","Uint8ClampedArray","BigUint64Array","BigInt64Array","DataView","Map","BigInt","Set","WeakMap","WeakSet","Proxy","Reflect","decodeURI","decodeURIComponent","encodeURI","encodeURIComponent","escape","unescape","eval","isFinite","isNaN","SharedArrayBuffer","Atomics","globalThis","self","WebAssembly", "TEMPORARY", "PERSISTENT"];
+        var whitelist = ["Object","Function","Array","Number","parseFloat","parseInt","Infinity","NaN","undefined","Boolean","String","Symbol","Date","Promise","RegExp","Error","EvalError","RangeError","ReferenceError","SyntaxError","TypeError","URIError","JSON","Math","Intl","ArrayBuffer","Uint8Array","Int8Array","Uint16Array","Int16Array","Uint32Array","Int32Array","Float32Array","Float64Array","Uint8ClampedArray","BigUint64Array","BigInt64Array","DataView","Map","BigInt","Set","WeakMap","WeakSet","Proxy","Reflect","decodeURI","decodeURIComponent","encodeURI","encodeURIComponent","escape","unescape","eval","isFinite","isNaN","SharedArrayBuffer","Atomics","globalThis","self","WebAssembly", "setTimeout", "setInterval", "clearTimeout", "clearInterval", "EventTarget", "Event", "ErrorEvent", "PromiseRejectionEvent", "onerror", "onrejectionhandled", "onunhandledrejection", "TEMPORARY", "PERSISTENT"];
         var blacklist = ["onmessage", "onmessageerror", "postMessage"];
         var root_keys = Object.getOwnPropertyNames(self).concat(Object.getOwnPropertySymbols(self) || []);
         var root_length = root_keys.length;
+        var EventTarget = self.EventTarget;
+        var EventTargetProto = null;
+        if(EventTarget) { 
+            EventTargetProto = EventTarget.prototype;
+            rootEventTarget = new EventTarget();
+        }
         apis.addEventListener = (...args) => {
             if(args.length < 2) return;
             if(String(args[0]) == "message") return;
@@ -292,18 +322,46 @@
         for(var i = 0; i < root_length; i++) {
             var key = root_keys[i];
             if(blacklist.includes(key)) {
-                if(Object.getOwnPropertyDescriptor(self, key)) {
-                    try {
-                        Object.defineProperty(self, key, {value: undefined, configurable: true, enumerable: false, writable: true});
-                    } catch(ex) { Promise.reject(ex); }
-                    try { delete self[key] } catch(ex) {}
+                var desc;
+                if((desc = Object.getOwnPropertyDescriptor(self, key))) {
+                    if(typeof key == 'string' && key.startsWith("on") && !desc.set) {
+                        try {
+                            Object.defineProperty(self, key, {get: () => undefined, set: () => { throw new root.errors.ReferenceError("You cannot add a listener for " + key); }, configurable: false, enumerable: false});
+                        } catch(ex) { Promise.reject(ex); try { delete self[key] } catch(ex) {} }
+                    } else {
+                        try {
+                            Object.defineProperty(self, key, {value: undefined, configurable: true, enumerable: false, writable: true});
+                        } catch(ex) { Promise.reject(ex); }
+                        try { delete self[key] } catch(ex) {}
+                    }
                 }
                 continue;
             }
             if(whitelist.includes(key)) continue;
             if(key == null) continue;
-            apis[key] = self[key];
-            if(Object.getOwnPropertyDescriptor(self, key)) {
+            try { if(!apis[key]) apis[key] = self[key]; } catch(ex) {}
+            var desc;
+            if((desc = Object.getOwnPropertyDescriptor(self, key))) {
+                if(typeof key == 'string' && key.startsWith("on")) {
+                    if(desc.set) {
+                        ((key, desc) => {
+                            var ev = key.substr(2);
+                            var me = self;
+                            var copy = { get: desc.get, set: desc.set, enumerable: false, configurable: true };
+                            if(!apiEvents[ev]) apiEvents[ev] = { desc: copy, allowed: false, allow: () => { if(apiEvents[ev].allowed) return; root.util.defineProperty(me, key, copy); apiEvents[ev].allowed = true; registerRootListener(ev); }};
+                        })(key, desc);
+                    } else {
+                        (key => {
+                            var ev = key.substr(2);
+                            if(!apiEvents[ev]) apiEvents[ev] = { desc, allowed: false, allow: () => { if(apiEvents[ev].allowed) return; apiEvents[ev].allowed = true; registerRootListener(ev); } };
+                            try {
+                                var val = undefined;
+                                Object.defineProperty(self, key, {get: () => val, set: v => { if(!apiEvents[key].allowed) throw new root.errors.ReferenceError("You cannot add a listener for " + key); val = v; }, enumerable: false, configurable: false });
+                            } catch(ex) { Promise.reject(ex); try { delete self[key]; } catch(ex) {} }
+                        })(key);
+                        continue;
+                    }
+                }
                 try {
                     Object.defineProperty(self, key, {value: undefined, configurable: true, enumerable: false, writable: true});
                 } catch(ex) { Promise.reject(ex); }
@@ -313,12 +371,17 @@
         }
         //prototype chain bug. if you delete a property, the prototype property is not deleted so you have access to that.
         var proto = self;
+        var hasEvent = false;
         while(proto && proto != Object.prototype) {
             try {
                Object.setPrototypeOf(proto, Object.prototype);
                break;
             } catch(ex) {
                proto = Object.getPrototypeOf(proto);
+               if(proto == EventTargetProto) {
+                    hasEvent = true;
+                    proto = Object.getPrototypeOf(proto);
+               }
                if(!proto || proto == Object.prototype) break;
                root_keys = Object.getOwnPropertyNames(proto).concat(Object.getOwnPropertySymbols(proto) || []);
                root_length = root_keys.length;
@@ -326,7 +389,29 @@
                    var key = root_keys[i];
                    if(key == null) continue;
                    if(whitelist.includes(key)) continue;
-                   if(Object.getOwnPropertyDescriptor(proto, key)) {
+                   var desc;
+                   try { if(!apis[key]) apis[key] = proto[key]; } catch(ex) {}
+                   if((desc = Object.getOwnPropertyDescriptor(proto, key))) {
+                       if(typeof key == 'string' && key.startsWith("on")) {
+                           if(desc.set) {
+                               ((key, desc) => {
+                                   var ev = key.substr(2);
+                                   var me = self;
+                                   var copy = { get: desc.get, set: desc.set, enumerable: false, configurable: true };
+                                   if(!apiEvents[ev]) apiEvents[ev] = { desc: copy, allowed: false, allow: () => { if(apiEvents[ev].allowed) return; root.util.defineProperty(me, key, copy); apiEvents[ev].allowed = true; registerRootListener(ev); }};
+                               })(key, desc);
+                            } else {
+                                (key => {
+                                    var ev = key.substr(2);
+                                    if(!apiEvents[ev]) apiEvents[ev] = { desc, allowed: false, allow: () => { if(apiEvents[ev].allowed) return; apiEvents[ev].allowed = true; registerRootListener(ev); } };
+                                    try {
+                                        var val = undefined;
+                                        Object.defineProperty(self, key, {get: () => val, set: v => { if(!apiEvents[key].allowed) throw new root.errors.ReferenceError("You cannot add a listener for " + key); val = v; }, configurable: true, enumerable: false });
+                                    } catch(ex) { Promise.reject(ex); try { delete self[key]; } catch(ex) {} }
+                                })(key);
+                                continue;
+                            }
+                      }
                       try {
                           Object.defineProperty(proto, key, {value: undefined, configurable: true, enumerable: false, writable: true});
                       } catch(ex) { Promise.reject(ex); }
@@ -338,6 +423,55 @@
         proto = Object.getPrototypeOf(self);
         if(proto == Object.prototype) self[Symbol.toStringTag] = "JailedGlobal";
         else proto[Symbol.toStringTag] = "JailedGlobal";
+        if(hasEvent) {
+            proto = EventTargetProto;
+            root_keys = Object.getOwnPropertyNames(proto).concat(Object.getOwnPropertySymbols(proto) || []);
+            root_length = root_keys.length;
+            for(var i = 0; i < root_length; i++) {
+                var key = root_keys[i];
+                if(key == null || key == 'constructor') continue;
+                if(whitelist.includes(key)) continue;
+                var old = proto[key];
+                if(key == "addEventListener" || key == "removeEventListener" || key == "dispatchEvent") {
+                    if(old && EventTargetProto.dispatchEvent && key == "addEventListener") {
+                        ((add, dispatch) => {
+                            if(!add || !dispatch) return;
+                            var reg = [];
+                            registerRootListener = name => {
+                                name = name + '';
+                                if(name == 'message' || name == 'messageerror') return;
+                                if(reg.includes(name)) return;
+                                add(name, dispatch);
+                                reg[root.util.arrayLength(reg)] = name;
+                            };
+                            registerRootListener("error");
+                            registerRootListener("rejectionhandled");
+                            registerRootListener("unhandledrejection");
+                        })(root.bind(old, self), root.bind(EventTargetProto.dispatchEvent, rootEventTarget));
+                    }
+                    if(old) {
+                        ((proto, key, old) => {
+                            var old_name = old.toString();
+                            var old_to_str = old.toString.toString();
+                            proto[key] = function(...args) {
+                                if(this === self) return root.apply(old, root.util.arrayConcat([rootEventTarget], args));
+                                else return root.apply(old, root.util.arrayConcat([this], args));
+                            }
+                            proto[key].toString = () => old_name;
+                            proto[key].toString[Symbol.toStringTag] = old_to_str;
+                        })(proto, key, old);
+                        continue;
+                    }
+                }
+                try { if(!apis[key]) apis[key] = proto[key]; } catch(ex) {}
+                if(Object.getOwnPropertyDescriptor(proto, key)) {
+                    try {
+                        Object.defineProperty(proto, key, {value: undefined, configurable: true, enumerable: false, writable: true});
+                    } catch(ex) { Promise.reject(ex); }
+                    try { delete proto[key]; } catch(ex) {}
+                }
+            }
+        }
         //edits to apis is allowed.
     })();
     
@@ -866,16 +1000,19 @@
         /* Root for the code from the messages */
         data = {
             self: self,
-            objs: {0: self, 1: apis}, 
+            objs: {0: self, 1: apis, 2: apiEvents}, 
             global: self, 
-            count: 2, 
+            count: 3, 
             snippets: {}, 
             postMessage: postMessage, 
             wrap: imports.messageToValue, 
-            root: root,
-            util: util,
-            global_eval: global_eval,
-            apis: apis,
+            root,
+            util,
+            global_eval,
+            apis,
+            apiEvents,
+            registerRootListener,
+            rootEventTarget,
             symbol: function(x, y) {
                 if(x in data.objs) return data.objs[x];
                 else {
@@ -912,6 +1049,25 @@
                     }
                     if(key in self) continue;
                     this.util.defineProperty(self, key, {configurable: true, enumerable: false, writable: true, value: apis[key]})
+                }
+                return didall;
+            },
+            whitelistEvent: function(x) {
+                if(!(x instanceof Array)) x = [x];
+                var len = util.arrayLength(x);
+                var didall = true;
+                for(var i = 0; i < len; i++) {
+                    var key = x[i];
+                    if(!(typeof key == 'string')) {
+                        didall = false;
+                        continue;
+                    }
+                    if(!(key in apiEvents)) {
+                        registerRootListener(key);
+                    } else {
+                        if(apiEvents[key].allowed) continue;
+                        apiEvents[key].allow();
+                    }
                 }
                 return didall;
             }

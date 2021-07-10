@@ -689,7 +689,10 @@ class JailPromise {
             }
             return '(' + str + '])';
         } else if(value instanceof JailObject) {
+            if(jaileval !== value[jail_eval]) throw new TypeError("Cannot pass a JailObject from an another jail");
             return '(this.objs[' + String(value[jail_index]) + '])';
+        } else if(value instanceof JailMap || value instanceof JailSet) {
+            return fromValue(jaileval, value.object);
         } else if(value instanceof Error) {
             var type = 'Error';
             var errors = { EvalError, RangeError, ReferenceError, SyntaxError, TypeError, AggregateError: self.AggregateError, InternalError: self.InternalError };
@@ -1032,6 +1035,52 @@ class JailPromise {
             return this[jail_eval]('return this.util.ObjectIsExtensible(this.objs[' + String(this[jail_index]) + ']);')
         }
 
+        /*
+        * Return true if this (as a promise!) is an EventTarget
+        * @returns {Promise<boolean>}
+        */
+        isEventTarget() {
+            return this[jail_eval]('return this.root.EventTarget == null ? false : (this.objs[' + String(this[jail_index]) + '] instanceof this.root.EventTarget);');
+        }
+
+        /*
+        * Returns true if this (as a promise!) is an EventTarget
+        * @returns {Promise<boolean>}
+        */
+        isEvent() {
+            return this[jail_eval]('return this.root.Event == null ? false : (this.objs[' + String(this[jail_index]) + '] instanceof this.root.Event);');
+        }
+
+        /*
+        * Dispatch an event on this EventTarget
+        * @param {string|JailObject|Event} ev The event(name) to dispatch
+        * @param {object|JailObject} data A object with some data for the Event (will be assigned to the Event). (ev must be a string)
+        * @returns {Promise<boolean>} see EventTarget.prototype.dispatchEvent
+        */
+        dispatchEvent(ev, data) {
+            try {
+                var str = '';
+                if(typeof ev == 'object' && ev != null && Event && ev instanceof Event) {
+                    data = ev;
+                    ev = ev.type;
+                }
+                if(typeof ev == 'string') {
+                    str = 'new this.root.Event(' + JSON.stringify(ev) + ')';
+                    if(data) {
+                        str = 'this.util.ObjectAssign(new this.root.Event(' + JSON.stringify(ev) + '), (' + fromValue(this[jail_eval], data) + '))';
+                    } else {
+                        str = 'new this.root.Event(' + JSON.stringify(ev) + ')';
+                    }
+                } else if(ev instanceof JailObject) {
+                    if(ev[jail_eval] !== this[jail_eval]) throw new TypeError("Cannot pass a JailObject from a different jail");
+                    str = 'this.objs[' + ev[jail_index] + ']';
+                } else throw new TypeError("Expects ev to be a string/Event (and data, optional, a plain object) OR ev to be a JailObject (of an Event)");
+                return this[jail_eval]('return this.util.dispatchEvent(this.objs[' + String(this[jail_index]) + '], ' + str + ')');
+            } catch(ex) {
+                return Promise.reject(ex);
+            }
+        }
+
         /**
          * This function will prevent any new properties to be created on this object.
          * @returns {Promise}
@@ -1072,7 +1121,7 @@ class JailPromise {
          * @param {Promise<Boolean>} other 
          */
         instanceOf(other) {
-            return this[jail_eval]('return this.objs[' + String(this[jail_index]) + '] instanceof (' + fromValue(this[jail_eval], other) + ');')
+            return this[jail_eval]('return this.objs[' + String(this[jail_index]) + '] instanceof (' + fromValue(this[jail_eval], other) + ');');
         }
 
         /**
@@ -1335,6 +1384,7 @@ class JailPromise {
 
             Object.defineProperty(this, 'root', {configurable: false, enumerable: true, writable: false, value: toJailObject(jaileval, 0, null)});
             Object.defineProperty(this, 'apis', {configurable: false, enumerable: true, writable: false, value: toJailObject(jaileval, 1, null)});
+            Object.defineProperty(this, 'apiEvents', {configurable: false, enumerable: true, writable: false, value: toJailObject(jaileval, 2, null)});
             Object.defineProperty(this, jail_eval, {configurable: false, enumerable: false, writable:false, value: jaileval});
             Object.defineProperty(this, 'is_terminated', {configurable: true, enumerable: true, writable: true, value: false});
             Object.seal(this);
@@ -1466,7 +1516,8 @@ class JailPromise {
 
         /**
          * Whitelist an object or property provided by the VM.
-         * When the feature is whitelisted, it can't be blacklisted.
+         * When the feature is whitelisted, it can't be blacklisted,
+         * because the object could be cloned by the jailed code.
          * 
          * You can pass a single name for that specific object or
          * you can pass an array of object names.
@@ -1477,13 +1528,27 @@ class JailPromise {
             return this[jail_eval]('return this.whitelist(' + JSON.stringify(name) + ')');
         }
 
+
         /**
-         * Whitelist all features, this is dangerous because that means
+         * Whitelist an event provided by the VM.
+         * When the event is whitelisted, it can't be blacklisted.
+         * 
+         * You can pass a single name for that specific event or
+         * you can pass an array of event names.
+         * @param {string|Array<string>} name 
+         * @returns {Promise<boolean>} Gives true on success.
+         */
+        whitelistEvent(name) {
+            return this[jail_eval]('return this.whitelistEvent(' + JSON.stringify(name) + ')');
+        }
+
+        /**
+         * Whitelist all features AND events, this is dangerous because that means
          * that the worker has access to 'all' functions, like XMLHttpRequest with cookies
          * and postMessage channels. So if you run this function, don't run any untrusted code!
          */
         whitelistAllFeatures() {
-            return this[jail_eval]('return this.whitelist(this.util.keys(this.apis));')
+            return this[jail_eval]('return this.whitelist(this.util.keys(this.apis)) && this.whitelistEvent(this.util.keys(this.apiEvents));')
         }
     
         /**
@@ -1494,6 +1559,15 @@ class JailPromise {
          */
         getAllFeatures() {
             return this.apis.getOwnPropertyNames();
+        }
+
+        /**
+         * Get all the name of the events provided by the VM, that are standard blacklisted.
+         * 
+         * @return {Promise<Array<string>>}
+         */
+        getAllEvents() {
+            return this.apiEvents.getOwnPropertyNames();
         }
 
         /**
