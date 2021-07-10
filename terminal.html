@@ -217,7 +217,7 @@
                     }), msg => jail.forceTerminate(msg)]);
                     var loadFile = file_name => {
                         if(typeof file_name != 'string') throw new TypeError("Argument needs to be a string");
-                        if(file_name.includes("..") || !/^[a-zA-Z0-9.]+$/.test(file_name)) throw new TypeError("Invalid file name");
+                        if(file_name.includes("..") || !/^[a-zA-Z0-9\-.]+$/.test(file_name)) throw new TypeError("Invalid file name");
                         return new Promise((resolve, reject) => {
                             var xhr = new XMLHttpRequest();
                             xhr.open("GET", file_name);
@@ -243,7 +243,7 @@
                     root.set("loadFileSync", new JailSynchronousFunction(loadFile, true));
                     var loadScript = file_name => {
                         if(typeof file_name != 'string') throw new TypeError("Argument needs to be a string");
-                        if(file_name.includes("..") || !/^[a-zA-Z0-9.]+$/.test(file_name)) throw new TypeError("Invalid file name");
+                        if(file_name.includes("..") || !/^[a-zA-Z0-9\-.]+$/.test(file_name)) throw new TypeError("Invalid file name");
                         return new Promise((resolve, reject) => {
                             var xhr = new XMLHttpRequest();
                             xhr.open("GET", file_name);
