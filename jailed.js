@@ -109,7 +109,12 @@
         var _map_array = Array.prototype.map;
         var EventTarget = self.EventTarget;
         var _event_dispatch = EventTarget ? (EventTarget.prototype.dispatchEvent ? EventTarget.prototype.dispatchEvent : null) : null;
-
+        var _buffer_get_length = self.SharedArrayBuffer ? Object.getOwnPropertyDescriptor(SharedArrayBuffer.prototype, "byteLength") : null;
+        if (_buffer_get_length && _buffer_get_length.get) _buffer_get_length = _buffer_get_length.get;
+        else _buffer_get_length = null;
+        var _text_encoder_encode = self.TextEncoder ? self.TextEncoder.prototype.encode : null;
+        var _text_decoder_decode = self.TextDecoder ? self.TextDecoder.prototype.decode : null;
+        var _buffer_slice = self.Uint8Array ? self.Uint8Array.prototype.slice : null;
         var _array_get_iterator = Array.prototype[Symbol.iterator];
         var _array_next = Object.getPrototypeOf([][Symbol.iterator]()).next;
         Function.prototype.toString = function () {
@@ -149,10 +154,18 @@
             Map,
             Date,
             BigInt,
-            Event: self.Event ? self.Event : null,
-            ErrorEvent: self.ErrorEvent ? self.ErrorEvent : null,
-            PromiseRejectionEvent: self.PromiseRejectionEvent ? self.PromiseRejectionEvent : null,
-            EventTarget: self.EventTarget ? self.EventTarget : null,
+            Atomics: self.Atomics,
+            ArrayBuffer: self.ArrayBuffer,
+            SharedArrayBuffer: self.SharedArrayBuffer,
+            Int32Array: self.Int32Array,
+            Uint8Array: self.Uint8Array,
+            Uint32Array: self.Uint32Array,
+            TextEncoder: self.TextEncoder,
+            TextDecoder: self.TextDecoder,
+            Event: self.Event,
+            ErrorEvent: self.ErrorEvent,
+            PromiseRejectionEvent: self.PromiseRejectionEvent,
+            EventTarget: self.EventTarget,
             toStringTag: Symbol.toStringTag,
             errors: { EvalError, RangeError, ReferenceError, SyntaxError, TypeError, AggregateError: self.AggregateError, InternalError: self.InternalError },
             GeneratorFunction: Object.getPrototypeOf(function* () { }).constructor,
@@ -187,6 +200,13 @@
                         return arr.length; //the .length is not configurable
                     } else {
                         return apply(_getLength, [arr]);
+                    }
+                },
+                bufferLength(buff) {
+                    if (_buffer_get_length == null) {
+                        return buff.byteLength; //the .byteLength is not configurable
+                    } else {
+                        return apply(_buffer_get_length, [buff]);
                     }
                 },
                 symbolDescription(symbol) {
@@ -281,6 +301,18 @@
                     if (target == null || !(target instanceof root.EventTarget)) return; //EventTarget != null cuz _event_dispatch != null
                     return apply(_event_dispatch, [target, ev]);
                 },
+                encodeText(str, encoding) {
+                    return apply(_text_encoder_encode, [new root.TextEncoder(encoding), str]);
+                },
+                decodeText(data, encoding) {
+                    return apply(_text_decoder_decode, [new root.TextDecoder(encoding), data]);
+                },
+                sliceBufferStart(data, start) {
+                    return apply(_buffer_slice, [data, start]);
+                },
+                sliceBuffer(data, start, end) {
+                    return apply(_buffer_slice, [data, start, end]);
+                },
                 keys: bind(Object.keys, Object),
                 defineProperty: bind(Object.defineProperty, Object),
                 defineProperties: bind(Object.defineProperties, Object),
@@ -298,6 +330,7 @@
                 ObjectPreventExtensions: bind(Object.preventExtensions, Object),
                 ObjectIsExtensible: bind(Object.isExtensible, Object),
                 ObjectAssign: bind(Object.assign, Object),
+                AtomicsWait: self.Atomics ? self.Atomics.wait.bind(Atomics) : null,
                 isNaN,
                 apply,
                 bind
@@ -480,11 +513,11 @@
                 }
             }
             var messagedesc = Object.getOwnPropertyDescriptor(self, "onmessage");
-            if(messagedesc == null || messagedesc.configurable) {
+            if (messagedesc == null || messagedesc.configurable) {
                 var list = null;
-                Object.defineProperty(self, "onmessage", {get: () => list, set: val => list = val, enumerable: false, configurable: true});
+                Object.defineProperty(self, "onmessage", { get: () => list, set: val => list = val, enumerable: false, configurable: true });
                 rootEventTarget.addEventListener('message', e => list ? list(e) : null);
-                
+
             }
         }
         //edits to apis is allowed.
@@ -546,7 +579,7 @@
                 } else {
                     return JSON.stringify(value);
                 }
-            } else if(typeof value == 'bigint') {
+            } else if (typeof value == 'bigint') {
                 return 'BigInt(' + JSON.stringify(String(value)) + ')';
             } else if (typeof value == 'function') {
                 var index = null;
@@ -957,7 +990,7 @@
             var util = root.util;
             if (index in data.objs && type != 'error') return data.objs[index];
             if (type == 'function') {
-                var callFunctionInMain = function (a) {
+                var callFunctionAsyncInMain = function (a) {
                     var str = 'Call(' + index + ',' + valueToMessage(this);
                     var args = util.toArray(a);
                     for (var i = 0; i < util.arrayLength(args); i++) {
@@ -974,7 +1007,60 @@
                 };
                 //we do this so that the code from (callFunctionInMain) is not exposed by toString
                 var r = function JailedFunction() {
-                    return callFunctionInMain(arguments);
+                    return callFunctionAsyncInMain(arguments);
+                }
+                util.defineProperty(r, 'toString', {
+                    configurable: false,
+                    enumerable: false,
+                    writable: false,
+                    value: jailed_to_string
+                });
+                data.objs[index] = r;
+                return r;
+            } else if (type == 'syncfunction') {
+                var callFunctionSyncInMain = function (a) {
+                    if (data.sharedBuffer == null) throw new Error("Synchronous API is disabled");
+                    var str = 'CallSync(' + index + ',' + valueToMessage(this);
+                    var args = util.toArray(a);
+                    for (var i = 0; i < util.arrayLength(args); i++) {
+                        str += ',' + valueToMessage(args[i]);
+                    }
+                    str += ')';
+                    var arr = new root.Int32Array(data.sharedBuffer);
+                    data.sharedValue = arr[0];
+                    root.postMessage(str);
+                    
+                    util.AtomicsWait(arr, 0, data.sharedValue);
+                    data.sharedValue = arr[0];
+                    var len = arr[1];
+                    var left = len;
+                    var block = util.bufferLength(data.sharedBuffer) - 8;
+                    var txt = new root.Uint8Array(new root.ArrayBuffer(len));
+                    var read = 0;
+                    while (1) {
+                        var rlen = left;
+                        if (rlen > block) rlen = block;
+                        var r = util.sliceBuffer(new root.Uint8Array(data.sharedBuffer), 8, 8 + rlen);
+                        for (var i = 0; i < rlen; i++) {
+                            txt[i + read] = r[i];
+                        }
+                        read += rlen;
+                        left -= rlen;
+                        if (left < 1) break;
+                        data.sharedValue = arr[0];
+                        root.postMessage("next");
+                        util.AtomicsWait(arr, 0, data.sharedValue);
+                        data.sharedValue = arr[0];
+                    }
+                    try {
+                        return root.apply(new root.Function(util.decodeText(txt, 'utf-8')), [data]);
+                    } catch (ex) {
+                        throw ex; //error in synchronous jail api
+                    }
+                };
+                //we do this so that the code from (callFunctionInMain) is not exposed by toString
+                var r = function JailedFunction() {
+                    return callFunctionSyncInMain(arguments);
                 }
                 util.defineProperty(r, 'toString', {
                     configurable: false,
@@ -1034,6 +1120,8 @@
         var String = root.String;
         var StringType = root.StringType;
         var Function = root.Function;
+        var SharedArrayBuffer = root.SharedArrayBuffer;
+        var Atomics = root.Atomics;
         var AsyncFunction = root.AsyncFunction;
         var GeneratorFunction = root.GeneratorFunction;
         var Symbol = root.Symbol;
@@ -1065,6 +1153,9 @@
             apiEvents,
             registerRootListener,
             rootEventTarget,
+            postedObj: null,
+            sharedBuffer: null,
+            sharedValue: 0,
             symbol: function (x, y) {
                 if (x in data.objs) return data.objs[x];
                 else {
@@ -1123,7 +1214,18 @@
                 }
                 return didall;
             },
-            postMessage: function(message) {
+            enableSynchronousAPI: function () {
+                if (SharedArrayBuffer == null || Atomics == null || root.TextDecoder == null) throw new TypeError("Synchronous API not supported in worker");
+                var obj = data.postedObj;
+                if (obj == null) throw new TypeError("No Shared buffer given.")
+                if (!(obj instanceof SharedArrayBuffer)) throw new TypeError("Must be a SharedArrayBuffer");
+                data.sharedBuffer = obj;
+                data.postedObj = null;
+            },
+            disableSynchronousAPI: function () {
+                data.sharedBuffer = null;
+            },
+            postMessage: function (message) {
                 var ev = new Event('message');
                 ev.data = message;
                 return util.dispatchEvent(rootEventTarget, ev);
@@ -1136,7 +1238,7 @@
         };
 
         var postDesc = Object.getOwnPropertyDescriptor(self, "postMessage");
-        if(postDesc == null || postDesc.configurable) {
+        if (postDesc == null || postDesc.configurable) {
             (post => { //make sure we don't override the worker postmessage (local var)
                 function sendMessageToMain(message) {
                     post("Message(" + imports.valueToMessage(message) + ")");
@@ -1149,7 +1251,7 @@
                 var str = st.split("toString").join("postMessage");
                 postMessage.toString = () => str;
                 postMessage.toString.toString = () => st;
-                Object.defineProperty(self, "postMessage", {value: postMessage, configurable: true, writable: true, enumerable: false});
+                Object.defineProperty(self, "postMessage", { value: postMessage, configurable: true, writable: true, enumerable: false });
             })(postMessage);
         }
 
@@ -1193,11 +1295,7 @@
                     postMessage('Error(' + valueToMessage(ex) + ')');
                 }
             } else {
-                if (stackLength > 0) {
-                    util.pop(stack)(e.data);
-                    return;
-                }
-                data.objs[data.count++] = e.data;
+                data.postedObj = e.data;
             }
         });
 

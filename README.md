@@ -118,6 +118,64 @@ The code runs in a new global with its own context in a seperate thread, and not
 })();
 ```
 
+8. Synchronous API supported
+Normally, API functions always return Promises. Now you can also register functions that do return directly in the Jail.
+The Jail will wait for the function in the main thread to finish before returning. 
+The only small problem is that the jail is frozen.
+
+Example:
+
+```javascript
+(async function() {
+    var jail = new JailJS();
+    var root = jail.root;
+
+    root.set('print', async (...d) => console.log(...(await Promise.all(d.map(z => z instanceof JailObject ? z.resolve() : z))))); //A console API is not exposed to the sandbox, by default. We need to create a print function
+
+    //you must inform the JailJS that you are going to use synchronous apis
+    //this call may fail if the browser does not support Atomics
+    await jail.enableSynchronousAPI();
+
+    //you can register synchronous functions with the JailSynchronousFunction() constructor
+    function spaces(len) {
+        var str = '';
+        for(var i = 0; i < len; i++) {
+            str += ' ';
+        }
+        return str;
+    }
+    root.set('spaces', new JailSynchronousFunction(spaces));
+    await jail.execute('print(spaces(20));');
+
+    //most common and safe way is to register simple functions in the sandbox
+    //normally, if a synchronous function returns a promise, that promise will not be resolved before the functions returns
+    //the entire promise will be the return of the synchronous function
+
+    root.set("resolver1", new JailSynchronousFunction(Promise.resolve.bind(Promise)));
+    await jail.execute('print(resolver1("Hello world"));'); //JailPromise resolved "Hello world"
+
+    //you can change this behaviour by setting the promise argument to true. (false is default)
+    //if promise=true, the jail will wait on the promise before returning from the synchronous function
+    //you actually make a asynchronous function, synchronous function in jail.
+    root.set("resolver2", new JailSynchronousFunction(Promise.resolve.bind(Promise), true));
+    //nows it just waits on the promise instead of returning the promise itself
+    await jail.execute('print(resolver2("Hello world"));'); //Hello world (not a promise!)
+
+    //NOTE: if you set promise to true, ANY api function (such as .get()) will not resolve until the promise of the synchronous function is resolved
+    //So you should not use any api function inside a synchronous function with a promise.
+    root.set("hello", "world");
+    root.set("safelock", new JailSynchronousFunction(() => root.get("hello"), false));
+    root.set("deadlock", new JailSynchronousFunction(() => root.get("hello"), true));
+    //this will not result in a deadlock, and returns a promise that resolves to "world"
+    console.log(await (await jail.execute("safelock()")).resolve()); //JailPromise resolved "world"
+    //this will result in a deadlock, because it uses a api function in a asynchronous function (that is made synchronous)
+    //console.log(await (await jail.execute("deadlock()")).resolve()); //never resolves, jail is frozen
+    
+    await jail.onReady();
+    await jail.terminate();
+})();
+```
+So if you make asynchronous function, synchronous for the jail, it is limited. You cannot use the jail API in those functions.
 
 
 ## Benefits of chroot JS

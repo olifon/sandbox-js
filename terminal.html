@@ -54,7 +54,7 @@
                                 me.log('[exception] ' + await convert_variable_to_string(ex));
                                 me.prompt();
                             });
-                            jail.timeoutAfter(3000).catch(function(ex) {term.log('[exception] JailTerminatedError: ' + ex.message)});
+                            //jail.timeoutAfter(3000).catch(function(ex) {term.log('[exception] JailTerminatedError: ' + ex.message)});
                         } else term.prompt();
                     }
             });
@@ -91,6 +91,7 @@
                 var term_opened = false;
                 var setupJail = async function() {
                     jail = new JailJS();
+                    jail.enableSynchronousAPI().catch(ex => console.error(ex));
                     root = jail.root;
                     jail.onTerminate().then(setupJail);
                     jail.execute(`/*# sourceMappingURL=formatUnicorn*/
@@ -214,7 +215,7 @@
                     }), () => term.newLine(), (function() {
                         term.clear();
                     }), msg => jail.forceTerminate(msg)]);
-                    root.set("loadFile", file_name => {
+                    var loadFile = file_name => {
                         if(typeof file_name != 'string') throw new TypeError("Argument needs to be a string");
                         if(file_name.includes("..") || !/^[a-zA-Z0-9.]+$/.test(file_name)) throw new TypeError("Invalid file name");
                         return new Promise((resolve, reject) => {
@@ -237,8 +238,10 @@
                             };
                             xhr.send();
                         });
-                    });
-                    root.set("loadScript", file_name => {
+                    };
+                    root.set("loadFile", loadFile);
+                    root.set("loadFileSync", new JailSynchronousFunction(loadFile, true));
+                    var loadScript = file_name => {
                         if(typeof file_name != 'string') throw new TypeError("Argument needs to be a string");
                         if(file_name.includes("..") || !/^[a-zA-Z0-9.]+$/.test(file_name)) throw new TypeError("Invalid file name");
                         return new Promise((resolve, reject) => {
@@ -258,7 +261,7 @@
                                     xhr.onreadystatechange = null;
                                     try {
                                         console.log("file " + file_name + " loaded in jail");
-                                        resolve(jail.execute("/*# sourceMappingURL=" + file_name + "*/" + xhr.responseText));
+                                        resolve(new JailPromise(jail.execute("/*# sourceMappingURL=" + file_name + "*/" + xhr.responseText)));
                                     } catch(ex) {
                                         reject(ex);
                                     }
@@ -266,7 +269,9 @@
                             };
                             xhr.send();
                         });
-                    });
+                    };
+                    root.set("loadScript", loadScript);
+                    root.set("loadScriptSync", new JailSynchronousFunction(loadScript, true));
                     if(!term_opened) term.open();
                     else term.prompt();
                     term_opened = true;

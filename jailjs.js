@@ -28,6 +28,14 @@ class JailTerminatedError extends JailError {
         super(null, message);
     }
 }
+class JailSynchronousFunction {
+    constructor(func, promise) {
+        if (!(func instanceof Function)) throw new Error("Func argument needs to be a function");
+        this.value = func;
+        this.promise = !!promise;
+        Object.freeze(this);
+    }
+}
 /*
   This class wraps promises from the Jailed environment.
   It is needed because you cannot let a promise return an another promise (without chaining).
@@ -338,8 +346,8 @@ class JailPromise {
             case 'bigint':
                 if (!tokenizer.startCall()) throw jail_error();
                 var value = tokenizer.string();
-                if(value == null) throw jail_error();
-                if(!tokenizer.end()) throw jail_error;
+                if (value == null) throw jail_error();
+                if (!tokenizer.end()) throw jail_error;
                 return BigInt(value);
             case 'string':
                 if (!tokenizer.startCall()) throw jail_error();
@@ -406,7 +414,7 @@ class JailPromise {
                 if (index == null) index = tokenizer.string();
                 var isNext = false;
                 if (tokenizer.next(',')) {
-                    if(typeof index != 'number') throw jail_error();
+                    if (typeof index != 'number') throw jail_error();
                     isNext = true;
                     var value = tokenizer.string();
                     if (value != null) {
@@ -660,7 +668,7 @@ class JailPromise {
             } else {
                 return '(' + String(value) + ')';
             }
-        } else if(typeof value == 'bigint'){
+        } else if (typeof value == 'bigint') {
             return 'this.root.BigInt(' + String(value) + ')';
         } else if (typeof value == 'string') {
             return '(' + JSON.stringify(value) + ')';
@@ -688,6 +696,19 @@ class JailPromise {
             return '(this.wrap("function",' + String(index) + '))';
         } else if (typeof value == 'boolean') {
             return value ? 'true' : 'false';
+        } else if (value instanceof JailSynchronousFunction) {
+            if (!jaileval.data_buffer) throw new TypeError("First enable synchronous API before adding synchronous functions");
+            var index;
+            var objskeys = Object.keys(jaileval.funcs);
+            var objslen = objskeys.length;
+            for (var i = 0; i < objslen; i++) {
+                var key = objskeys[i];
+                if (key == undefined) continue;
+                if (jaileval.funcs[key] === value) index = value;
+            }
+            if (index == null) index = -(jaileval.objscount++);
+            jaileval.funcs[index] = value;
+            return '(this.wrap("syncfunction",' + String(index) + '))';
         } else if (value instanceof Promise || value instanceof JailPromise) {
             if (value instanceof JailPromise) value = value.value;
             if (index in jaileval.promises) {
@@ -811,7 +832,7 @@ class JailPromise {
          * Get a value by its key
          * @param {*} key The key that identifies the value 
          * @returns {Promise<*>} The value
-         */        
+         */
         get(key) {
             return this[jail_eval]('return this.util.map.get(this.objs[' + String(this[jail_index]) + '],(' + fromValue(this[jail_eval, key]) + '));');
         }
@@ -1322,6 +1343,7 @@ class JailPromise {
                 var ret;
                 if (index in jaileval.funcs) {
                     var func = jaileval.funcs[index];
+                    if (func instanceof JailSynchronousFunction) func = func.value;
                     ret = function () {
                         try {
                             var result = func.apply(this, Array.prototype.slice.call(arguments));
@@ -1459,6 +1481,8 @@ class JailPromise {
             jaileval.empty_callback = null;
             jaileval.empty_promise = null;
             jaileval.message_listeners = [];
+            jaileval.data_buffer = null;
+            jaileval.buffer_state = 0;
             jaileval.next_callback = function () {
                 if (jaileval.empty_callback != null && jaileval.value_callbacks.length >= 1) {
                     var callback = jaileval.empty_callback;
@@ -1469,10 +1493,34 @@ class JailPromise {
                 return jaileval.value_callbacks.shift();
             };
 
+            var postBuff = null;
             worker.addEventListener('message', function (e) {
                 //debug
                 //console.debug("< " + e.data);
                 var message = e.data;
+                if (message == 'next') {
+                    if (!jaileval.data_buffer || !postBuff) {
+                        var err = new Error("Something went wrong by returning a synchronous function.");
+                        me.forceTerminate(err);
+                        throw err;
+                    }
+                    var arr = new Int32Array(jaileval.data_buffer);
+                    arr[1] = postBuff.byteLength;
+                    var txt = new Uint8Array(jaileval.data_buffer);
+                    var block = jaileval.data_buffer.byteLength - 8;
+                    var cpy = postBuff.byteLength;
+                    if (cpy > block) cpy = block;
+                    for (var i = 0; i < cpy; i++) {
+                        txt[i + 8] = postBuff[i];
+                    }
+                    jaileval.buffer_state++;
+                    jaileval.buffer_state = jaileval.buffer_state % 1024;
+                    arr[0] = jaileval.buffer_state;
+                    Atomics.notify(arr, 0);
+                    if (postBuff.byteLength > block) postBuff = postBuff.slice(block);
+                    else postBuff = null;
+                    return;
+                }
                 var reader = new Tokenizer(e.data);
                 var func = reader.name();
                 if (func == null) throw jail_error();
@@ -1505,12 +1553,66 @@ class JailPromise {
                         if (index in jaileval.funcs) {
                             try {
                                 if (thisArg[jail_index] == 0) thisArg = self; //root
-                                var result = jaileval.funcs[index].apply(thisArg, args);
+                                var func = jaileval.funcs[index];
+                                if (func instanceof JailSynchronousFunction) func = func.value;
+                                var result = func.apply(thisArg, args);
                                 worker.postMessage(">return " + fromValue(jaileval, result));
                             } catch (ex) {
                                 worker.postMessage("<return " + fromValue(jaileval, ex));
                             }
+                        } else worker.postMessage("<return " + fromValue(jaileval, new ReferenceError("Jail function not found")));
+                        break;
+                    case 'callsync':
+                        if (!jaileval.data_buffer) {
+                            var err = new Error("Worker called synchronous function while sharedArrayBuffer is not registered.");
+                            me.forceTerminate(err);
+                            throw err;
                         }
+                        if (!reader.startCall()) throw jail_error();
+                        var index = reader.number();
+                        if (index == null) throw jail_error();
+                        if (!reader.next(',')) throw jail_error();
+                        var thisArg = toValue(jaileval, reader);
+                        var args = [];
+                        while (reader.next(',')) {
+                            args.push(toValue(jaileval, reader));
+                        }
+                        if (!reader.end()) throw jail_error();
+                        var rstr = '';
+                        (async () => {
+                            if (index in jaileval.funcs) {
+                                try {
+                                    if (thisArg[jail_index] == 0) thisArg = self; //root
+                                    var func = jaileval.funcs[index];
+                                    var promise = false;
+                                    if (func instanceof JailSynchronousFunction) {
+                                        promise = func.promise;
+                                        func = func.value;
+                                    }
+                                    var result = func.apply(thisArg, args);
+                                    if(promise) result = await result;
+                                    rstr = 'return (' + fromValue(jaileval, result) + ');';
+                                } catch (ex) {
+                                    rstr = 'throw (' + fromValue(jaileval, ex) + ');';
+                                }
+                            } else rstr = 'throw new this.root.ReferenceError("Jail Function not found");'
+                            postBuff = (new TextEncoder('utf-8')).encode(rstr);
+                            var arr = new Int32Array(jaileval.data_buffer);
+                            arr[1] = postBuff.byteLength;
+                            var txt = new Uint8Array(jaileval.data_buffer);
+                            var block = jaileval.data_buffer.byteLength - 8;
+                            var cpy = postBuff.byteLength;
+                            if (cpy > block) cpy = block;
+                            for (var i = 0; i < cpy; i++) {
+                                txt[i + 8] = postBuff[i];
+                            }
+                            jaileval.buffer_state++;
+                            jaileval.buffer_state = jaileval.buffer_state % 1024;
+                            arr[0] = jaileval.buffer_state;
+                            Atomics.notify(arr, 0);
+                            if (postBuff.length > block) postBuff = postBuff.slice(block);
+                            else postBuff = null;
+                        })();
                         break;
                     case 'registerpromise':
                         if (!reader.startCall()) throw jail_error();
@@ -1535,7 +1637,7 @@ class JailPromise {
                     case 'message':
                         if (!reader.startCall()) throw jail_error();
                         var message = toValue(jaileval, reader);
-                        for(var listener of jaileval.message_listeners) {
+                        for (var listener of jaileval.message_listeners) {
                             listener(message);
                         }
                         break;
@@ -1821,7 +1923,7 @@ class JailPromise {
          * @param {(message: any) => void} listener you listener. unlike the browser .onmessage this will not give you an Event (with .data) but directly the received data.
          */
         addMessageListener(listener) {
-            if(!(listener instanceof Function)) throw new TypeError("Provide a function for addMessageListener");
+            if (!(listener instanceof Function)) throw new TypeError("Provide a function for addMessageListener");
             this[jail_eval].message_listeners.push(listener);
         }
 
@@ -1833,7 +1935,7 @@ class JailPromise {
          */
         removeMessageListener(listener) {
             var index = this[jail_eval].message_listeners.indexOf(listener);
-            if(index < 0) return false;
+            if (index < 0) return false;
             this[jail_eval].message_listeners.splice(index, 1);
             return true;
         }
@@ -1886,6 +1988,34 @@ class JailPromise {
          */
         objectOf(value) {
             return this[jail_eval]("return this.root.Object(" + fromValue(this[jail_eval], value) + ");");
+        }
+
+        /**
+         * Enable synchronous API on the Jail (if browser supports Atomics)
+         * @param {Number|undefined} buffer_size the size of the buffer (optional), 1024 minimum, 65536 default
+         */
+        enableSynchronousAPI(buffer_size) {
+            if (!self.Atomics || !self.SharedArrayBuffer || !self.Uint8Array || !self.TextEncoder) return Promise.reject(new Error("Atomics not supported on this browser"));
+            //onReady is used so that if NOW a synchronous function is running, it will not be disrupted (race condition)
+            return this.onReady().then(() => {
+                try {
+                    if (!buffer_size) buffer_size = 65536;
+                    buffer_size = Number(buffer_size);
+                    if (isNaN(buffer_size) || buffer_size < 1024) buffer_size = 1024;
+                    if (buffer_size % 4 != 0) buffer_size += 4 - (buffer_size % 4);
+                    var buff = new SharedArrayBuffer(buffer_size);
+                    this[jail_eval].data_buffer = buff;
+                    this[jail_eval].worker.postMessage(buff);
+                    return this[jail_eval]("return this.enableSynchronousAPI();");
+                } catch (ex) { return Promise.reject(ex); }
+            });
+        }
+
+        /**
+         * Disable synchronous API on the jail
+         */
+        disableSynchronousAPI() {
+            return this[jail_eval]("return this.disableSynchronousAPI();").then(() => this[jail_eval].data_buffer = null);
         }
 
         /**
@@ -1997,7 +2127,7 @@ class JailPromise {
             result = result.toString();
         } else if (typeof result == 'string') {
             return JSON.stringify(result);
-        } else if(typeof result == 'bigint') {
+        } else if (typeof result == 'bigint') {
             return String(result) + 'n';
         } else {
             result = String(result);
