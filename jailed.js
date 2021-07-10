@@ -83,6 +83,8 @@
         var _f_str = Function.prototype.toString.toString();
         var _promise_then = Promise.prototype.then;
         var _boolean_value_of = Boolean.prototype.valueOf;
+        var _bigint_value_of = BigInt.prototype.valueOf;
+        var _bigint_to_string = BigInt.prototype.toString;
         var _get_date_time = Date.prototype.getTime;
         var _set_add = Set.prototype.add;
         var _set_delete = Set.prototype.delete;
@@ -126,6 +128,8 @@
                     return apply(_n_toString, [str]);
                 } else if (str instanceof root.Boolean) {
                     return apply(_b_toString, [str]);
+                } else if (str instanceof root.BigInt) {
+                    return apply(_bigint_to_string, [str]);
                 } else {
                     return apply(_String, [self, str]); //apply to not give the 'this' away.
                 }
@@ -144,6 +148,7 @@
             Set,
             Map,
             Date,
+            BigInt,
             Event: self.Event ? self.Event : null,
             ErrorEvent: self.ErrorEvent ? self.ErrorEvent : null,
             PromiseRejectionEvent: self.PromiseRejectionEvent ? self.PromiseRejectionEvent : null,
@@ -214,6 +219,9 @@
                 },
                 booleanValue(bool) {
                     return apply(_boolean_value_of, [bool]);
+                },
+                bigIntValue(int) {
+                    return apply(_bigint_value_of, [int]);
                 },
                 getDateTime(date) {
                     return apply(_get_date_time, [date]);
@@ -471,6 +479,13 @@
                     try { delete proto[key]; } catch (ex) { }
                 }
             }
+            var messagedesc = Object.getOwnPropertyDescriptor(self, "onmessage");
+            if(messagedesc == null || messagedesc.configurable) {
+                var list = null;
+                Object.defineProperty(self, "onmessage", {get: () => list, set: val => list = val, enumerable: false, configurable: true});
+                rootEventTarget.addEventListener('message', e => list ? list(e) : null);
+                
+            }
         }
         //edits to apis is allowed.
     })();
@@ -500,6 +515,7 @@
             var Object = root.Object;
             var Boolean = root.Boolean;
             var Number = root.Number;
+            var BigInt = root.BigInt;
             var Promise = root.Promise;
             var Symbol = root.Symbol;
             var JSON = root.JSON;
@@ -530,6 +546,8 @@
                 } else {
                     return JSON.stringify(value);
                 }
+            } else if(typeof value == 'bigint') {
+                return 'BigInt(' + String(value) + ')';
             } else if (typeof value == 'function') {
                 var index = null;
                 var objkeys = util.keys(data.objs);
@@ -655,6 +673,35 @@
                     if (index == null) index = data.count++;
                     data.objs[index] = value;
                     return "Number(" + String(index) + "," + String(value) + ")";
+                }
+            } else if (value instanceof BigInt) {
+                if (isStatic) {
+                    var keys = util.keys(value);
+                    var len = util.arrayLength(keys);
+                    var str = "BigIntObject(" + String(value) + ",{";
+                    for (var i = 0; i < len; i++) {
+                        var key = keys[i];
+                        if (key == undefined) continue;
+                        var v = undefined;
+                        try { v = value[key]; } catch (ex) { }
+                        if (i > 0) str += ',';
+                        str += valueToMessage(key) + ':' + valueToMessage(deep ? new StaticType(v, true) : v);
+                    }
+                    return str + '})';
+                } else {
+                    var index = null;
+                    var objkeys = util.keys(data.objs);
+                    var objlen = util.arrayLength(objkeys);
+                    for (var i = 0; i < objlen; i++) {
+                        var key = objkeys[i];
+                        if (data.objs[key] === value) {
+                            index = key;
+                            break;
+                        }
+                    }
+                    if (index == null) index = data.count++;
+                    data.objs[index] = value;
+                    return "BigIntObject(" + String(index) + "," + String(value) + ")";
                 }
             } else if (value instanceof Date) {
                 if (isStatic) {
@@ -910,9 +957,9 @@
             var util = root.util;
             if (index in data.objs && type != 'error') return data.objs[index];
             if (type == 'function') {
-                var r = function () {
+                var callFunctionInMain = function (a) {
                     var str = 'Call(' + index + ',' + valueToMessage(this);
-                    var args = util.toArray(arguments);
+                    var args = util.toArray(a);
                     for (var i = 0; i < util.arrayLength(args); i++) {
                         str += ',' + valueToMessage(args[i]);
                     }
@@ -925,6 +972,10 @@
                         });
                     });
                 };
+                //we do this so that the code from (callFunctionInMain) is not exposed by toString
+                var r = function JailedFunction() {
+                    return callFunctionInMain(arguments);
+                }
                 util.defineProperty(r, 'toString', {
                     configurable: false,
                     enumerable: false,
@@ -988,6 +1039,7 @@
         var Symbol = root.Symbol;
         var JSON = { parse: root.JSON.parse, stringify: root.JSON.stringify };
         var Array = root.Array;
+        var Event = root.Event;
         var util = root.util;
         var bind = root.bind;
         var apply = root.apply;
@@ -1070,6 +1122,11 @@
                     }
                 }
                 return didall;
+            },
+            postMessage: function(message) {
+                var ev = new Event('message');
+                ev.data = message;
+                return util.dispatchEvent(rootEventTarget, ev);
             }
         };
         var snippets = data.snippets;
@@ -1077,6 +1134,24 @@
         addMessageListener = function (f) {
             util.push(stack, f);
         };
+
+        var postDesc = Object.getOwnPropertyDescriptor(self, "postMessage");
+        if(postDesc == null || postDesc.configurable) {
+            (post => { //make sure we don't override the worker postmessage (local var)
+                function sendMessageToMain(message) {
+                    post("Message(" + imports.valueToMessage(message) + ")");
+                }
+                //We Do this so that the code of sendMessageToMain is not exposed by toString
+                function postMessage(message) {
+                    sendMessageToMain(message);
+                }
+                var st = postMessage.toString.toString();
+                var str = st.split("toString").join("postMessage");
+                postMessage.toString = () => str;
+                postMessage.toString.toString = () => st;
+                Object.defineProperty(self, "postMessage", {value: postMessage, configurable: true, writable: true, enumerable: false});
+            })(postMessage);
+        }
 
         addEventListener('message', function (e) {
             /**

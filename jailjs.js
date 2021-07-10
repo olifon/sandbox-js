@@ -335,6 +335,12 @@ class JailPromise {
                 return true;
             case 'false':
                 return false;
+            case 'bigint':
+                if (!tokenizer.startCall()) throw jail_error();
+                var value = tokenizer.string();
+                if(value == null) throw jail_error();
+                if(!tokenizer.end()) throw jail_error;
+                return BigInt(value);
             case 'string':
                 if (!tokenizer.startCall()) throw jail_error();
                 var index = tokenizer.number();
@@ -389,6 +395,27 @@ class JailPromise {
                 }
                 var value = index;
                 var primitive = new Number(value);
+                if (isNext) {
+                    if (!assign_object_from_value(jaileval, tokenizer, primitive)) throw jail_error();
+                }
+                if (!tokenizer.end()) throw jail_error();
+                return primitive;
+            case 'bigintobject':
+                if (!tokenizer.startCall()) throw jail_error();
+                var index = tokenizer.number();
+                if (index == null) index = tokenizer.string();
+                var isNext = false;
+                if (tokenizer.next(',')) {
+                    if(typeof index != 'number') throw jail_error();
+                    isNext = true;
+                    var value = tokenizer.string();
+                    if (value != null) {
+                        if (!tokenizer.end()) throw jail_error();
+                        return toJailObject(jaileval, index, BigInt(value));
+                    }
+                }
+                var value = index;
+                var primitive = new BigInt(value);
                 if (isNext) {
                     if (!assign_object_from_value(jaileval, tokenizer, primitive)) throw jail_error();
                 }
@@ -633,6 +660,8 @@ class JailPromise {
             } else {
                 return '(' + String(value) + ')';
             }
+        } else if(typeof value == 'bigint'){
+            return 'this.root.BigInt(' + String(value) + ')';
         } else if (typeof value == 'string') {
             return '(' + JSON.stringify(value) + ')';
         } else if (typeof value == 'symbol') {
@@ -1330,6 +1359,7 @@ class JailPromise {
             jaileval.value_callbacks = value_callbacks;
             jaileval.empty_callback = null;
             jaileval.empty_promise = null;
+            jaileval.message_listeners = [];
             jaileval.next_callback = function () {
                 if (jaileval.empty_callback != null && jaileval.value_callbacks.length >= 1) {
                     var callback = jaileval.empty_callback;
@@ -1404,6 +1434,15 @@ class JailPromise {
                                 jaileval("this.objs[" + String(reject_index) + "](" + fromValue(jaileval, r) + ");");
                                 delete jaileval.objs[index];
                             });
+                        break;
+                    case 'message':
+                        if (!reader.startCall()) throw jail_error();
+                        var message = toValue(jaileval, reader);
+                        for(var listener of jaileval.message_listeners) {
+                            listener(message);
+                        }
+                        break;
+
                 }
             });
 
@@ -1620,36 +1659,102 @@ class JailPromise {
         }
 
         /**
-         * Creates an empty object at the jail envrionment.
-         * @returns {Promise<JailObject>} the empty object created at the jail.
+         * Creates an empty object on the jail envrionment.
+         * @returns {Promise<JailObject>} the empty object created on the jail.
          */
         createEmptyObject() {
             return this[jail_eval]("return {};");
         }
 
         /**
-         * Creates an empty array at the jail envrionment.
-         * @returns {Promise<JailObject>} the empty object created at the jail.
+         * Creates an empty array on the jail envrionment.
+         * @returns {Promise<JailObject>} the empty object created on the jail.
          */
         createEmptyArray() {
             return this[jail_eval]("return [];");
         }
 
+        /**
+         * Creates an empty set on the jail environment
+         * 
+         * use .valueOf() function on the created object to get the JailSet object (which you can use to add items)
+         * @returns {Promise<JailObject>} the empty set created on the jail
+         */
         createEmptySet() {
             return this[jail_eval]("return new this.root.Set();");
         }
+
+        /**
+         * Creates a set from an existing array
+         * 
+         * use .valueOf() function on the created object to get the JailSet object
+         * @param {Array|JailObject} array the array, that contains the items for the set.
+         */
+        createSetFrom(array) {
+            return this[jail_eval]("return new this.root.Set(" + fromValue(this[jail_eval], array) + ');');
+        }
+
+        /**
+         * Creates an empty map on the jail environment
+         * 
+         * use .valueOf() function on the created object to get the JailSet object (which you can use to add items)
+         * @returns {Promise<JailObject>} the empty map created on the jail
+         */
 
         createEmptyMap() {
             return this[jail_eval]("return new this.root.Map();");
         }
 
         /**
-         * Returns the jail value of the value.
+         * Dispatchs a 'message' event in the jail for worker-like message communications.
          * 
-         * If the value is a primitive value, the same value is returned.
+         * You can listen to those message with addEventListener or .onmessage
+         * Unlike worker message, you can pass abritary values like JailObjects and Symbols.
+         * You can read the message in the JAIL with event.data
+         * @param {*} message The data you want to post to the jail
+         */
+        postMessage(message) {
+            return this[jail_eval]("return this.postMessage(" + fromValue(this[jail_eval], message) + ");");
+        }
+
+        /**
+         * Add a listener that will be called by messages sent from the jail.
+         * 
+         * You can remove the listener by removeMessageListener.
+         * @param {(message: any) => void} listener you listener. unlike the browser .onmessage this will not give you an Event (with .data) but directly the received data.
+         */
+        addMessageListener(listener) {
+            if(!(listener instanceof Function)) throw new TypeError("Provide a function for addMessageListener");
+            this[jail_eval].message_listeners.push(listener);
+        }
+
+
+        /**
+         * Removes a listener from messages sent by jail
+         * @param {(message: any) => void} listener the registered listener
+         * @returns {boolean} if the listener was deleted (or not if it didn't exist)
+         */
+        removeMessageListener(listener) {
+            var index = this[jail_eval].message_listeners.indexOf(listener);
+            if(index < 0) return false;
+            this[jail_eval].message_listeners.splice(index, 1);
+            return true;
+        }
+
+        /**
+         * Returns the jail value of the value.
+         * Clones objects when necessary.
+         * 
+         * If the value is a primitive value, the same value is returned. (also for symbols)
          * If the value is a JailObject, the 'value' is returned.
-         * If the value is an object/Array, the entire object is copied to the jail.
+         * If the value is an object/Array, the entire object is copied to the jail and a JailObject is returned instead.
          * If the value is a primitive wrapper (String, Number, Symbol...), a new wrapper for the jail is created (JailObject is returned).
+         * 
+         * You can get the primitive value (without waiting on a promise) from wrappers (JailObject) with the valueOf() method.
+         * This works for String, Number, Symbol (object), BigInt, Boolean and also Date. (which will return a Date object instead of a primitive)
+         * 
+         * Symbols are linked between the jail and the main environment, even if they live in different javascript contexts.
+         * That means that if you pass the same symbol from the main environment, the same symbol will be returned in the jail environment. And vice versa.
          * 
          * @param {*} value the value to convert to an jail value.
          * @returns {Promise<*>} the converted value for the jail.
