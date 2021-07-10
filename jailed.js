@@ -80,6 +80,28 @@
         var _f_str = Function.prototype.toString.toString();
         var _promise_then = Promise.prototype.then;
         var _boolean_value_of = Boolean.prototype.valueOf;
+        var _get_date_time = Date.prototype.getTime;
+        var _set_add = Set.prototype.add;
+        var _set_delete = Set.prototype.delete;
+        var _set_has = Set.prototype.has;
+        var _set_get_length = Object.getOwnPropertyDescriptor(Set.prototype, "size");
+        var _set_get_iterator = Set.prototype[Symbol.iterator];
+        var _set_next = Object.getPrototypeOf((new Set())[Symbol.iterator]()).next;
+        var _it_symbol = Symbol.iterator;
+        if(_set_get_length) _set_get_length = _set_get_length.get;
+        var _map_get_keys = Map.prototype.keys;
+        var _map_get = Map.prototype.get;
+        var _map_set = Map.prototype.set;
+        var _map_delete = Map.prototype.delete;
+        var _map_has = Map.prototype.has;
+        var _map_get_length = Object.getOwnPropertyDescriptor(Map.prototype, "size");
+        if(_map_get_length) _map_get_length = _map_get_length.get;
+        var _map_key_next = Object.getPrototypeOf((new Map()).keys()[Symbol.iterator]()).next;
+        var _map_get_values = Map.prototype.values;
+        var _map_value_next = Object.getPrototypeOf((new Map()).values()[Symbol.iterator]()).next;
+        var _map_get_entries = Map.prototype.entries;
+        var _map_entry_next = Object.getPrototypeOf((new Map()).entries()[Symbol.iterator]()).next;
+        var _map_array = Array.prototype.map;
         Function.prototype.toString = function() {
             if(this.toString === jailed_to_string) return apply(jailed_to_string, [this]);
             else if(this === _f_to_string || this === _f_to_string_string) return _f_str;
@@ -111,6 +133,9 @@
             Boolean,
             Error,
             TypeError,
+            Set,
+            Map,
+            Date,
             toStringTag: Symbol.toStringTag,
             errors: { EvalError, RangeError, ReferenceError, SyntaxError, TypeError, AggregateError: self.AggregateError, InternalError: self.InternalError },
             GeneratorFunction: Object.getPrototypeOf(function*(){}).constructor,
@@ -122,8 +147,8 @@
             NaN: self.NaN,
             Infinity: self.Infinity,
             JSON: {
-                stringify: JSON.stringify,
-                parse: JSON.parse
+                stringify: JSON.stringify.bind(JSON),
+                parse: JSON.parse.bind(JSON)
             },
             addEventListener: bind(self.addEventListener, self),
             postMessage: bind(self.postMessage, self),
@@ -176,6 +201,55 @@
                 },
                 booleanValue(bool) {
                     return apply(_boolean_value_of, [bool]);
+                },
+                getDateTime(date) {
+                    return apply(_get_date_time, [date]);
+                },
+                map: {
+                    keys(map) {
+                        return [...{[_it_symbol]: () => ({next: bind(_map_key_next, apply(_map_get_keys, [map]))})}];
+                    },
+                    values(map) {
+                        return [...{[_it_symbol]: () => ({next: bind(_map_value_next, apply(_map_get_values, [map]))})}];
+                    },
+                    entries(map) {
+                        return [...{[_it_symbol]: () => ({next: bind(_map_entry_next, apply(_map_get_entries, [map]))})}];
+                    },
+                    get(map, key) {
+                        return apply(_map_get, [map, key]);
+                    },
+                    set(map, key, value) {
+                        return apply(_map_set, [map, key, value]);
+                    },
+                    delete(map, key) {
+                        return apply(_map_delete, [map, key]);
+                    },
+                    has(map, key) {
+                        return apply(_map_has, [map, key]);
+                    },
+                    size(map) {
+                        return apply(_map_get_length, [map]);
+                    }
+                },
+                set: {
+                    values(set) {
+                        return [...{[_it_symbol]: () => ({next: bind(_set_next, apply(_set_get_iterator, [set]))})}];
+                    },
+                    add(set, value) {
+                        return apply(_set_add, [set, value]);
+                    },
+                    delete(set, value) {
+                        return apply(_set_delete, [set, value]);
+                    },
+                    has(set, value) {
+                        return apply(_set_has, [set, value]);
+                    },
+                    size(set) {
+                        return apply(_set_get_length, [set]);
+                    }
+                },
+                mapArray(arr, func) {
+                    return apply(_map_array, [arr, func]);
                 },
                 keys: bind(Object.keys, Object),
                 defineProperty: bind(Object.defineProperty, Object),
@@ -302,12 +376,15 @@
             var self = root.self;
             var Infinity = root.Infinity;
             var NaN = root.NaN;
+            var Map = root.Map;
+            var Set = root.Set;
+            var Date = root.Date;
             index = JSON.stringify(index);
             if(typeof value == 'undefined') {
                 return 'undefined';
             } else if(value == null) {
                 return 'null';
-            } else if(value == self) {
+            } else if(value === self) {
                 return 'self';
             } else if(typeof value == 'number' || typeof value == 'string' || typeof value == 'boolean') {
                 if(typeof value == 'number' && util.isNaN(value)) {
@@ -445,6 +522,35 @@
                     data.objs[index] = value;
                     return "Number(" + String(index) + "," + String(value) + ")";
                 }
+            } else if(value instanceof Date) {
+                if(isStatic) {
+                    var keys = util.keys(value);
+                    var len = util.arrayLength(keys);
+                    var str = "Date(" + String(util.getDateTime(value)) + ",{";
+                    for(var i = 0; i < len; i++) {
+                        var key = keys[i];
+                        if(key == undefined) continue;
+                        var v = undefined;
+                        try { v = value[key]; } catch(ex) {}
+                        if(i > 0) str += ',';
+                        str += valueToMessage(key) + ':' + valueToMessage(deep ? new StaticType(v, true) : v);
+                    }
+                    return str + '})';
+                } else {
+                    var index = null;
+                    var objkeys = util.keys(data.objs);
+                    var objlen = util.arrayLength(objkeys);
+                    for(var i = 0; i < objlen; i++) {
+                        var key = objkeys[i];
+                        if(data.objs[key] === value) {
+                            index = key;
+                            break;
+                        }
+                    }
+                    if(index == null) index = data.count++;
+                    data.objs[index] = value;
+                    return "Date(" + String(index) + "," + String(util.getDateTime(value)) + ")";
+                }
             } else if(value instanceof Boolean) {
                 if(isStatic) {
                     var keys = util.keys(value);
@@ -562,6 +668,72 @@
                     data.objs[index] = value;
                     return "Error(" + JSON.stringify(typeName) + "," + JSON.stringify(String(value.name)) + "," + JSON.stringify(String(value.message)) + "," + JSON.stringify(String(value.stack)) + "," + String(index) + ")";
                 }
+            } else if(value instanceof Set) {
+                if(isStatic) {
+                    var keys = util.keys(value);
+                    var len = util.arrayLength(keys);
+                    var info = util.set.values(value);
+                    var str = "Set(" + valueToMessage(new StaticType(info, deep)) + ",{";
+                    for(var i = 0; i < len; i++) {
+                        var key = keys[i];
+                        if(key == undefined) continue;
+                        var v = undefined;
+                        try { v = value[key]; } catch(ex) {}
+                        if(i > 0) str += ',';
+                        str += valueToMessage(key) + ':' + valueToMessage(deep ? new StaticType(v, true) : v);
+                    }
+                    return str + '})';
+                 } else {
+                    var index = null;
+                    var objkeys = util.keys(data.objs);
+                    var objlen = util.arrayLength(objkeys);
+                    for(var i = 0; i < objlen; i++) {
+                        var key = objkeys[i];
+                        if(data.objs[key] === value) {
+                            index = key;
+                            break;
+                        }
+                    }
+                    if(index == null) index = data.count++;
+                    data.objs[index] = value;
+                    return "Set(" + String(index) + ")";
+                 }
+            } else if(value instanceof Map) {
+                if(isStatic) {
+                    var keys = util.map.keys(value);
+                    var len = util.arrayLength(keys);
+                    var arr = [];
+                    var x = 0;
+                    for(var i = 0; i < len; i++) {
+                        arr[x++] = new StaticType([keys[i], util.map.get(value, keys[i])], deep);
+                    }
+                    keys = util.keys(value);
+                    len = util.arrayLength(keys);
+                    var str = "Map(" + valueToMessage(new StaticType(arr, deep)) + ",{";
+                    for(var i = 0; i < len; i++) {
+                        var key = keys[i];
+                        if(key == undefined) continue;
+                        var v = undefined;
+                        try { v = value[key]; } catch(ex) {}
+                        if(i > 0) str += ',';
+                        str += valueToMessage(key) + ':' + valueToMessage(deep ? new StaticType(v, true) : v);
+                    }
+                    return str + '})';
+                } else {
+                   var index = null;
+                    var objkeys = util.keys(data.objs);
+                    var objlen = util.arrayLength(objkeys);
+                    for(var i = 0; i < objlen; i++) {
+                        var key = objkeys[i];
+                        if(data.objs[key] === value) {
+                            index = key;
+                            break;
+                        }
+                    }
+                    if(index == null) index = data.count++;
+                    data.objs[index] = value;
+                    return "Map(" + String(index) + ")";
+                }
             } else {
                 if(isStatic) {
                     var keys = util.keys(value);
@@ -600,6 +772,7 @@
             var Error = root.Error;
             var errors = root.errors;
             var String = root.String;
+            var Map = root.Map;
             var util = root.util;
             if(index in data.objs && type != 'error') return data.objs[index];
             if(type == 'function') {
@@ -656,6 +829,15 @@
                     err.toString.toString = () => "function toString() { [native code] }";
                 } catch(ex) {}
                 return err;
+            } else if(type == 'map') {
+                value = index;
+                var len = util.arrayLength(value);
+                var map = new Map();
+                for(var i = 0; i < len; i++) {
+                    var item = value[i];
+                    util.map.set(map, item[0], item[1]);
+                }
+                return map;
             } else return value;
         }
     };

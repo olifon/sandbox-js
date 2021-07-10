@@ -390,6 +390,26 @@ class JailPromise {
             }
             if(!tokenizer.end()) throw jail_error();
             return primitive;
+            case 'date':
+            if(!tokenizer.startCall()) throw jail_error();
+            var index = tokenizer.number();
+            if(index == null) throw jail_error();
+            var isNext = false;
+            if(tokenizer.next(',')) {
+                isNext = true;
+                var value = tokenizer.number();
+                if(value != null) {
+                    if(!tokenizer.end()) throw jail_error();
+                    return toJailObject(jaileval, index, new Date(value));
+                }
+            }
+            var value = index;
+            var date = new Date(value);
+            if(isNext) {
+                if(!assign_object_from_value(jaileval, tokenizer, date)) throw jail_error();
+            }
+            if(!tokenizer.end()) throw jail_error();
+            return date;
             case 'promise':
             if(!tokenizer.startCall()) throw jail_error();
             var index = tokenizer.number();
@@ -519,6 +539,40 @@ class JailPromise {
             }
             if(!tokenizer.end()) throw jail_error();
             return obj;
+            case 'set':
+            if(!tokenizer.startCall()) throw jail_error();
+            var index = tokenizer.number();
+            if(index == null) {
+                var arr = toValue(jaileval, tokenizer);
+                if(arr == null || !(arr instanceof Array)) throw jail_error();
+                var set = new Set(arr);
+                if(tokenizer.next(',')) {
+                    if(!assign_object_from_value(jaileval, tokenizer, set)) throw jail_error();
+                }
+                return set;
+            } else {
+                if(index in jaileval.objs) return jaileval.objs[index];
+                else return (new JailSet(wrapper_secret, jaileval, index)).object;
+            }
+            case 'map':
+            if(!tokenizer.startCall()) throw jail_error();
+            var index = tokenizer.number();
+            if(index == null) {
+                var arr = toValue(jaileval, tokenizer);
+                if(arr == null || !(arr instanceof Array)) throw jail_error();
+                var map = new Map();
+                for(var item of arr) {
+                    if(item == null || !(item instanceof Array)) throw jail_error();
+                    map.set(item[0], item[1]);
+                }
+                if(tokenizer.next(',')) {
+                    if(!assign_object_from_value(jaileval, tokenizer, map)) throw jail_error();
+                }
+                return map;
+            } else {
+                if(index in jaileval.objs) return jaileval.objs[index];
+                else return (new JailMap(wrapper_secret, jaileval, index)).object;
+            }
             case 'error':
             if(!tokenizer.startCall()) throw jail_error();
             var type = tokenizer.string();
@@ -647,6 +701,17 @@ class JailPromise {
                 } catch(ex) {}
             }
             return '(this.wrap("error", {type:' + JSON.stringify(type) + ',name:' + JSON.stringify(value.name) + ',message:' + JSON.stringify(value.message) + ',stack:' + JSON.stringify(value.stack) + '}))';
+        } else if(value instanceof Set) {
+            return '(new this.root.Set(' + fromValue(jaileval, [...value]) + ')';
+        } else if(value instanceof Map) {
+            var keys = [...value.keys()];
+            var arr = [];
+            for(var key of keys) {
+                arr.push([key, value.get(key)]);
+            }
+            return '(new this.root.Map(' + fromValue(jaileval, arr) + ')';
+        } else if(value instanceof Date) {
+            return '(new this.root.Date(' + value.getTime() + ')';
         } else {
             var keys = Object.keys(value);
             var length = keys.length;
@@ -687,6 +752,70 @@ class JailPromise {
         }
         return str;
     }
+    self.JailMap = class {
+        constructor(secret, j_eval, index) {
+            if(!(secret === wrapper_secret)) 
+                throw new Error("You may not create a JailObject instance.");
+            Object.defineProperty(this, jail_eval, {configurable: false, enumerable: false, writable: false, value: j_eval});
+            Object.defineProperty(this, jail_index, {configurable: false, enumerable: false, writable: false, value: index});
+            Object.defineProperty(this, 'jail', {configurable: false, enumerable: false, writable: false, value: j_eval.control})
+            Object.defineProperty(this, "object", {configurable: false, enumerable: false, writable: false, value: toJailObject(j_eval, index, this)});
+        }
+
+        get(key) {
+            return this[jail_eval]('return this.util.map.get(this.objs[' + String(this[jail_index]) + ']);');
+        }
+
+        set(key, value) {
+            return this[jail_eval]('return this.util.map.set(this.objs[' + String(this[jail_index]) + '],(' + fromValue(this[jail_eval], key) + '),(' + fromValue(this[jail_eval], value) + '));');
+        }
+
+        has(key) {
+            return this[jail_eval]('return this.util.map.has(this.objs[' + String(this[jail_index]) + '],(' + fromValue(this[jail_eval], key) + '));');
+        }
+
+        delete(key) {
+            return this[jail_eval]('return this.util.map.delete(this.objs[' + String(this[jail_index]) + '],(' + fromValue(this[jail_eval], key) + '));');
+        }
+
+        keys() {
+            return this[jail_eval]('return this.static(this.util.map.keys(this.objs[' + String(this[jail_index]) + ']), false);');
+        }
+
+        values() {
+            return this[jail_eval]('return this.static(this.util.map.values(this.objs[' + String(this[jail_index]) + ']), false);');
+        }
+
+        entries() {
+            return this[jail_eval]('return this.static(this.util.mapArray(this.util.map.entries(this.objs[' + String(this[jail_index]) + ']), x => this.static(x, false)), false);');
+        }
+    };
+    self.JailSet = class {
+       constructor(secret, j_eval, index) {
+            if(!(secret === wrapper_secret)) 
+                throw new Error("You may not create a JailObject instance.");
+            Object.defineProperty(this, jail_eval, {configurable: false, enumerable: false, writable: false, value: j_eval});
+            Object.defineProperty(this, jail_index, {configurable: false, enumerable: false, writable: false, value: index});
+            Object.defineProperty(this, 'jail', {configurable: false, enumerable: false, writable: false, value: j_eval.control})
+            Object.defineProperty(this, "object", {configurable: false, enumerable: false, writable: false, value: toJailObject(j_eval, index, this)});
+        }
+
+        add(value) {
+           return this[jail_eval]('return this.util.set.add(this.objs[' + String(this[jail_index]) + '],(' + fromValue(this[jail_eval], value) + '));');
+        }
+
+        has(value) {
+           return this[jail_eval]('return this.util.set.has(this.objs[' + String(this[jail_index]) + '],(' + fromValue(this[jail_eval], value) + '));');
+        }
+
+        delete(value) {
+           return this[jail_eval]('return this.util.set.delete(this.objs[' + String(this[jail_index]) + '],(' + fromValue(this[jail_eval], value) + '));');
+        }
+
+        values() {
+           return this[jail_eval]('return this.static(this.util.set.values(this.objs[' + String(this[jail_index]) + ']), false);');
+        }
+    };
     self.JailObject = class {
         constructor(secret, j_eval, index, primitive_value) {
             if(!(secret === wrapper_secret)) 
@@ -929,7 +1058,7 @@ class JailPromise {
          */
         resolve(deep) {
             var r = this.valueOf();
-            if(r != null) {
+            if(r != null && !(r instanceof JailSet) && !(r instanceof JailMap)) {
                 if(r instanceof Promise) return Promise.resolve(new JailPromise(r));
                 else if(typeof r == 'object' || typeof r == 'function') return Promise.resolve(r);
                 else return Promise.resolve(Object(r));
@@ -960,6 +1089,13 @@ class JailPromise {
          */
         isArray() {
             return this[jail_primitive] == jail_array;
+        }
+        isSet() {
+            return this[jail_primitive] != null && this[jail_primitive] instanceof JailSet;
+        }
+
+        isMap() {
+            return this[jail_primitive] != null && this[jail_primitive] instanceof JailMap;
         }
 
         /**
@@ -1398,6 +1534,14 @@ class JailPromise {
          */
         createEmptyArray() {
             return this[jail_eval]("return [];");
+        }
+
+        createEmptySet() {
+            return this[jail_eval]("return new this.root.Set();");
+        }
+
+        createEmptyMap() {
+            return this[jail_eval]("return new this.root.Map();");
         }
 
         /**
