@@ -1,63 +1,63 @@
 /**
  * This code tests the jail for any bugs.
  */
-(async function() {
+(async function () {
     /**
      * This test utility is used in this test,
      * you pass a condition to the 'assert' functionm
      * if the result is false, assert will throw an error that the test failed.
      * @param {boolean} eq the condition 
      */
-    var assert = function(eq) {
-        if(typeof eq != 'boolean') throw new Error('Assert failed, not a boolean supplied.');
-        if(!eq) throw new Error('Assert failed.');
+    var assert = function (eq) {
+        if (typeof eq != 'boolean') throw new Error('Assert failed, not a boolean supplied.');
+        if (!eq) throw new Error('Assert failed.');
     }
     //this function checks of the contents of a object equals (not their references.)
-    var isEquivalent = async function(a, b) {
+    var isEquivalent = async function (a, b) {
         var aProps = Object.getOwnPropertyNames(a);
         var bProps = Object.getOwnPropertyNames(b);
-    
+
         if (aProps.length != bProps.length) return false;
-    
+
         for (var i = 0; i < aProps.length; i++) {
             var propName = aProps[i];
             var aValue = a[propName];
             var bValue = b[propName];
-            if(typeof aValue != typeof bValue) return false;
-            else if(aValue instanceof String || aValue instanceof Number || aValue instanceof Boolean || aValue instanceof Symbol) if(!aValue.valueOf() == bValue.valueOf()) 
+            if (typeof aValue != typeof bValue) return false;
+            else if (aValue instanceof String || aValue instanceof Number || aValue instanceof Boolean || aValue instanceof Symbol) if (!aValue.valueOf() == bValue.valueOf())
                 return false;
-            else if(aValue instanceof JailObject) if(!aValue === bValue) 
+            else if (aValue instanceof JailObject) if (!aValue === bValue)
                 return false;
-            else if(aValue instanceof Promise || aValue instanceof JailPromise) {
-                if(aValue instanceof JailPromise && bValue instanceof JailPromise) if(!aValue === bValue) 
+            else if (aValue instanceof Promise || aValue instanceof JailPromise) {
+                if (aValue instanceof JailPromise && bValue instanceof JailPromise) if (!aValue === bValue)
                     return false;
-                if(aValue instanceof JailPromise) aValue = aValue.value;
-                if(bValue instanceof JailPromise) bValue = bValue.value;
-                if(!aValue === bValue) return false;
+                if (aValue instanceof JailPromise) aValue = aValue.value;
+                if (bValue instanceof JailPromise) bValue = bValue.value;
+                if (!aValue === bValue) return false;
             }
-            else if(typeof aValue == 'object') {
-                if(aValue == null || bValue == null) if(!aValue === bValue) 
+            else if (typeof aValue == 'object') {
+                if (aValue == null || bValue == null) if (!aValue === bValue)
                     return false;
-                if(!(await (isEquivalent(aValue, bValue)))) 
+                if (!(await (isEquivalent(aValue, bValue))))
                     return false;
             }
             //typeof of a function returns 'function', functions do not always need to equal.
             //because functions returned from jail, must ALWAYS return promises. So for the jail that
             //returns main JS functions, a wrapper around the main JS function is created to make 
             //sure it returns a Promise.
-            else if(typeof aValue == 'function') {
+            else if (typeof aValue == 'function') {
                 //Test our functions
                 //bValues are the functions from jail.
                 var message = 'test function ' + String(i) + ' ' + String(Math.random());
-                if(!aValue(message) == await (bValue(message))) 
+                if (!aValue(message) == await (bValue(message)))
                     return false;
             }
-            else if (typeof aValue == 'number' && isNaN(aValue) && isNaN(bValue)) 
+            else if (typeof aValue == 'number' && isNaN(aValue) && isNaN(bValue))
                 continue;
-            else if (aValue !== bValue) 
+            else if (aValue !== bValue)
                 return false;
         }
-    
+
         return true;
     }
 
@@ -67,11 +67,11 @@
     assert(jail != null);
     var root = jail.root;
     assert(root != null);
-    var ping = new Promise(function(resolve, reject) {
-        jail.ping().then(function(r) {
+    var ping = new Promise(function (resolve, reject) {
+        jail.ping().then(function (r) {
             ping.done = true;
             resolve(r);
-        }, function(ex) {
+        }, function (ex) {
             reject(ex);
         });
     });
@@ -113,7 +113,7 @@
     assert(typeof sym2 == 'symbol');
     assert(sym1 != Symbol('hello world')); //new created symbols may never compare
     assert((await jail.execute('Symbol("other description")')).description == "other description"); //description needs to equal.
-    
+
     /**
      * Tests primitive types wrapped in Objects and some other execute functions.
      */
@@ -137,7 +137,7 @@
     /* Test errors */
     try {
         await jail.execute('throw new TypeError("test error");')
-    } catch(ex) {
+    } catch (ex) {
         assert(ex instanceof JailError);
         assert(ex.name == 'TypeError');
         assert(ex.message.includes("test error"));
@@ -151,7 +151,7 @@
     assert(!(await obj1.isFrozen()))
     assert(!(await obj1.isSealed()))
     assert(await obj1.isExtensible());
-    obj1.defineProperty('a', {enumerable: true, configurable: false, writable: false, value: 'b'});
+    obj1.defineProperty('a', { enumerable: true, configurable: false, writable: false, value: 'b' });
     assert(await obj1.get('a') == 'b');
     obj1.set('x', '_y');
     assert(await obj1.set('a', 'd') == 'd');
@@ -164,7 +164,7 @@
     var to_add2 = Symbol('to_add');
     obj1.set('new', to_add1);
     assert(await obj1.get('new') == to_add1);
-    obj1.defineProperty('new', {enumerable: false, configurable: true, writable: true, value: to_add2});
+    obj1.defineProperty('new', { enumerable: false, configurable: true, writable: true, value: to_add2 });
     assert(await obj1.has('x'));
     assert(await obj1.has('a'));
     assert(await obj1.has('new'));
@@ -203,8 +203,8 @@
     assert(await obj1.get('x') == 8);
     var didCatch = false;
     try {
-        await obj1.defineProperty('x', {configurable: true, value: 3});
-    } catch(ex) {
+        await obj1.defineProperty('x', { configurable: true, value: 3 });
+    } catch (ex) {
         assert(ex instanceof JailError);
         assert(ex.name == 'TypeError');
         didCatch = true;
@@ -249,22 +249,22 @@
     var promiseResult;
     try {
         await promise2.valueOf().value;
-    } catch(ex) {
+    } catch (ex) {
         promiseResult = ex;
     }
-    if(promiseResult == undefined) assert(false);
+    if (promiseResult == undefined) assert(false);
     assert(promiseResult instanceof JailError);
     assert(promiseResult.message.includes('ignore me as uncaught.'));
     assert((await returnMe.invoke([promise1])).valueOf().value == promise1.valueOf().value);
-    var message = {test: 'Hello World Jail.'};
+    var message = { test: 'Hello World Jail.' };
     var funcResult;
-    var messageReturn = (await new Promise(function(resolve, reject) {
-        (async function() {
+    var messageReturn = (await new Promise(function (resolve, reject) {
+        (async function () {
             funcResult = await (await (await jail.execute('(function(x, y) {return x(y);})'))).invoke([
-                async function(y) { //we call this function 'x'
+                async function (y) { //we call this function 'x'
                     resolve(await (y.resolve(true))); //test resolve
                     return "ok";
-                }, 
+                },
                 message
             ]);
         })();
@@ -281,7 +281,7 @@
     assert(funcResult.valueOf() instanceof JailPromise);
     assert(await funcResult.valueOf().value == 'ok');
     //test timeoutAfter (an extension to ping(), when the timeout is passed an error is thrown and the jail terminates)
-    await jail.timeoutAfter(1000); 
+    await jail.timeoutAfter(1000);
     /* Test complex objects passing to functions. */
     var returnArgs = await jail.execute('(function() {return Array.prototype.slice.call(arguments);})');
     var input = [
@@ -291,22 +291,22 @@
         undefined,
         NaN,
         root,
-        'hey', 
+        'hey',
         'Hello world',
-        Symbol('hello'), 
-        Symbol('world'), 
+        Symbol('hello'),
+        Symbol('world'),
         [
-            'lol', 
+            'lol',
             {
-                test: "object reference test", 
-                other: {foo: 'bar'}
-            }, 
+                test: "object reference test",
+                other: { foo: 'bar' }
+            },
             Symbol('new'),
-            function(test) {return "lol " + test;},
+            function (test) { return "lol " + test; },
             new Boolean(true)
-        ], 
-        {a: 'b'}, 
-        function(test) {return 'other test ' + test},
+        ],
+        { a: 'b' },
+        function (test) { return 'other test ' + test },
         new String("Alex"),
         new Number(8E3),
         new Number(8823),
@@ -316,7 +316,7 @@
         Promise.reject('rejected promise'),
         new JailPromise(Promise.resolve('resolved jail promise')),
         new JailPromise(Promise.reject('rejected jail promise')),
-        12356, 
+        12356,
         1.56,
         NaN,
         Infinity,
@@ -326,26 +326,26 @@
     assert(await result.instanceOf(await jail.execute('Array;')));
     result = await result.resolve(true);
 
-    
+
     //objects recieved from resolve do NOT reference equal to the input objects. This is because the input objects were cloned to the jail.
     //but Symbols and functions do equal.
     assert(await isEquivalent(input, result));
-    
+
     /**
      * Finally, check if it is possible to cause a Denial of Service attack.
      * Or worse: check if it possible to break out of the jail.
      */
 
-    
+
 
     //set some important VM functions for the jail to null, the jail still needs to work.
     jail.execute('Function.prototype.call = null; Function.prototype.bind = null; Object.keys = null; '
-    + 'Object.getOwnPropertyNames = null; String.prototype.trim = null; String.prototype.substring = null;'
-    + 'String.prototype.indexOf = null; String.prototype.startsWith = null; Function.prototype.apply = null;'
-    + 'Promise.prototype.then = null; Promise.prototype.reject = null;');
+        + 'Object.getOwnPropertyNames = null; String.prototype.trim = null; String.prototype.substring = null;'
+        + 'String.prototype.indexOf = null; String.prototype.startsWith = null; Function.prototype.apply = null;'
+        + 'Promise.prototype.then = null; Promise.prototype.reject = null;');
 
     //test it :-)
-    var test_values = async function() {
+    var test_values = async function () {
         assert(await jail.execute('"hello world"') == "hello world");
         assert(await jail.execute('undefined') === undefined);
         assert(await jail.execute('null') === null);
@@ -369,7 +369,7 @@
     */
     try {
         await jail.terminate(250); //terminate after 250 ms, because of timeout.
-    } catch(ex) {
+    } catch (ex) {
         rejected++;
         assert(ex instanceof JailTerminatedError);
         /*
@@ -378,7 +378,7 @@
         */
         try {
             await neverReturn;
-        } catch(ex2) {
+        } catch (ex2) {
             rejected++;
             assert(ex == ex2);
         }

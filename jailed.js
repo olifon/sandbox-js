@@ -4,7 +4,7 @@
  * will work in a closure. Why? Every important local value and function in this closure will not be accessible
  * outside this closure for the jailed code.
  */
-(function(global_eval) {
+(function (global_eval) {
     var undefined = undefined;
     /**
      * The untrusted code may alter any important native function and value that are provided from the VM,
@@ -21,12 +21,12 @@
      * You create a static type by 'this.static(value)' from an execute expression.
      * @param {*} x 
      */
-    var StaticType = function(x, y) {this.value = x; this.deep = y;};
+    var StaticType = function (x, y) { this.value = x; this.deep = y; };
 
     /**
      * This function is used for the .tostring by functions recieved from the main program.
      */
-    var jailed_to_string = function() {return "function () { [jail API] }"};
+    var jailed_to_string = function () { return "function () { [jail API] }" };
 
     /**
      * In the jail, only basic JS function are available.
@@ -34,13 +34,13 @@
      */
     var apis = {};
     var apiEvents = {};
-    var registerRootListener = () => {};
+    var registerRootListener = () => { };
     var rootEventTarget = null;
 
     /**
      * This closure fills the root object up with the required functions for the communication.
      */
-    (function() {
+    (function () {
         /**
          * We can't invoke functions on functions, because they may be altered. Their is no
          * global 'bind' that binds a function to a this, we can only call bind on a function.
@@ -52,7 +52,7 @@
          * x.bind(y) == globalBind(x, y) == bind(bind)(x)(y) == bindFunction(x)(y)
          */
         var bindFunction = Function.prototype.bind.bind(Function.prototype.bind);
-        var bind = function(f, t) { //globalBind, now it's just called 'bind'
+        var bind = function (f, t) { //globalBind, now it's just called 'bind'
             return bindFunction(f)(t);
         }
         /*
@@ -66,9 +66,9 @@
         var _indexOf = String.prototype.indexOf;
         var _startsWith = String.prototype.startsWith;
         var _getLength = Object.getOwnPropertyDescriptor(Array.prototype, 'length');
-        if(_getLength) _getLength = _getLength.get;
+        if (_getLength) _getLength = _getLength.get;
         var _getDescription = Object.getOwnPropertyDescriptor(Symbol.prototype, 'description');
-        if(_getDescription) _getDescription = _getDescription.get;
+        if (_getDescription) _getDescription = _getDescription.get;
         var _getArray = Array.prototype.slice;
         var _trim = String.prototype.trim;
         var _String = String;
@@ -91,14 +91,14 @@
         var _set_get_iterator = Set.prototype[Symbol.iterator];
         var _set_next = Object.getPrototypeOf((new Set())[Symbol.iterator]()).next;
         var _it_symbol = Symbol.iterator;
-        if(_set_get_length) _set_get_length = _set_get_length.get;
+        if (_set_get_length) _set_get_length = _set_get_length.get;
         var _map_get_keys = Map.prototype.keys;
         var _map_get = Map.prototype.get;
         var _map_set = Map.prototype.set;
         var _map_delete = Map.prototype.delete;
         var _map_has = Map.prototype.has;
         var _map_get_length = Object.getOwnPropertyDescriptor(Map.prototype, "size");
-        if(_map_get_length) _map_get_length = _map_get_length.get;
+        if (_map_get_length) _map_get_length = _map_get_length.get;
         var _map_key_next = Object.getPrototypeOf((new Map()).keys()[Symbol.iterator]()).next;
         var _map_get_values = Map.prototype.values;
         var _map_value_next = Object.getPrototypeOf((new Map()).values()[Symbol.iterator]()).next;
@@ -110,33 +110,33 @@
 
         var _array_get_iterator = Array.prototype[Symbol.iterator];
         var _array_next = Object.getPrototypeOf([][Symbol.iterator]()).next;
-        Function.prototype.toString = function() {
-            if(this.toString === jailed_to_string) return apply(jailed_to_string, [this]);
-            else if(this === _f_to_string || this === _f_to_string_string) return _f_str;
-            else if(this === jailed_to_string) return _f_str;
+        Function.prototype.toString = function () {
+            if (this.toString === jailed_to_string) return apply(jailed_to_string, [this]);
+            else if (this === _f_to_string || this === _f_to_string_string) return _f_str;
+            else if (this === jailed_to_string) return _f_str;
             else return apply(_f_to_string, [this]);
         };
-        Function.prototype.toString.toString = function() {return _f_str};
+        Function.prototype.toString.toString = function () { return _f_str };
         Function.prototype.toString.toString[Symbol.toStringTag] = _f_str;
         root = {
-            String: function(str) {
-                if(str instanceof _String) {
+            String: function (str) {
+                if (str instanceof _String) {
                     return apply(_s_toString, [str]);
-                } else if(str instanceof root.Number) {
+                } else if (str instanceof root.Number) {
                     return apply(_n_toString, [str]);
-                } else if(str instanceof root.Boolean) {
+                } else if (str instanceof root.Boolean) {
                     return apply(_b_toString, [str]);
                 } else {
                     return apply(_String, [self, str]); //apply to not give the 'this' away.
                 }
-            }, 
+            },
             self: self,
             StringType: _String,
-            Number, 
-            Object, 
-            Promise, 
-            Function, 
-            Array, 
+            Number,
+            Object,
+            Promise,
+            Function,
+            Array,
             Symbol,
             Boolean,
             Error,
@@ -150,8 +150,8 @@
             EventTarget: self.EventTarget ? self.EventTarget : null,
             toStringTag: Symbol.toStringTag,
             errors: { EvalError, RangeError, ReferenceError, SyntaxError, TypeError, AggregateError: self.AggregateError, InternalError: self.InternalError },
-            GeneratorFunction: Object.getPrototypeOf(function*(){}).constructor,
-            AsyncFunction: Object.getPrototypeOf(async function(){}).constructor,
+            GeneratorFunction: Object.getPrototypeOf(function* () { }).constructor,
+            AsyncFunction: Object.getPrototypeOf(async function () { }).constructor,
             bind: bind,
             bindFunction: bindFunction,
             apply: apply,
@@ -178,7 +178,7 @@
                     return apply(_startsWith, [str, search]);
                 },
                 arrayLength(arr) {
-                    if(_getLength == undefined) {
+                    if (_getLength == undefined) {
                         return arr.length; //the .length is not configurable
                     } else {
                         return apply(_getLength, [arr]);
@@ -186,12 +186,12 @@
                 },
                 symbolDescription(symbol) {
                     var description;
-                    if(_getDescription == undefined) {
+                    if (_getDescription == undefined) {
                         description = symbol.description;
                     } else {
                         description = apply(_getDescription, [symbol]);
                     }
-                    if(description == undefined) return null;
+                    if (description == undefined) return null;
                     return description;
                 },
                 toArray(arr) {
@@ -220,13 +220,13 @@
                 },
                 map: {
                     keys(map) {
-                        return [...{[_it_symbol]: () => ({next: bind(_map_key_next, apply(_map_get_keys, [map]))})}];
+                        return [...{ [_it_symbol]: () => ({ next: bind(_map_key_next, apply(_map_get_keys, [map])) }) }];
                     },
                     values(map) {
-                        return [...{[_it_symbol]: () => ({next: bind(_map_value_next, apply(_map_get_values, [map]))})}];
+                        return [...{ [_it_symbol]: () => ({ next: bind(_map_value_next, apply(_map_get_values, [map])) }) }];
                     },
                     entries(map) {
-                        return [...{[_it_symbol]: () => ({next: bind(_map_entry_next, apply(_map_get_entries, [map]))})}];
+                        return [...{ [_it_symbol]: () => ({ next: bind(_map_entry_next, apply(_map_get_entries, [map])) }) }];
                     },
                     get(map, key) {
                         return apply(_map_get, [map, key]);
@@ -246,7 +246,7 @@
                 },
                 set: {
                     values(set) {
-                        return [...{[_it_symbol]: () => ({next: bind(_set_next, apply(_set_get_iterator, [set]))})}];
+                        return [...{ [_it_symbol]: () => ({ next: bind(_set_next, apply(_set_get_iterator, [set])) }) }];
                     },
                     add(set, value) {
                         return apply(_set_add, [set, value]);
@@ -265,12 +265,12 @@
                     return apply(_map_array, [arr, func]);
                 },
                 arrayIterable(arr) {
-                    return {[_it_symbol]: () => ({next: bind(_array_next, apply(_array_get_iterator, [arr]))})};
+                    return { [_it_symbol]: () => ({ next: bind(_array_next, apply(_array_get_iterator, [arr])) }) };
                 },
                 dispatchEvent(target, ev) {
-                    if(!_event_dispatch) return;
-                    if(target === self) target = rootEventTarget;
-                    if(target == null || !(target instanceof root.EventTarget)) return; //EventTarget != null cuz _event_dispatch != null
+                    if (!_event_dispatch) return;
+                    if (target === self) target = rootEventTarget;
+                    if (target == null || !(target instanceof root.EventTarget)) return; //EventTarget != null cuz _event_dispatch != null
                     return apply(_event_dispatch, [target, ev]);
                 },
                 keys: bind(Object.keys, Object),
@@ -304,143 +304,143 @@
          * You can allow more by copying the values from apis.
          */
         //Temporary and persistent are constants that cannot be redefined
-        var whitelist = ["Object","Function","Array","Number","parseFloat","parseInt","Infinity","NaN","undefined","Boolean","String","Symbol","Date","Promise","RegExp","Error","EvalError","RangeError","ReferenceError","SyntaxError","TypeError","URIError","JSON","Math","Intl","ArrayBuffer","Uint8Array","Int8Array","Uint16Array","Int16Array","Uint32Array","Int32Array","Float32Array","Float64Array","Uint8ClampedArray","BigUint64Array","BigInt64Array","DataView","Map","BigInt","Set","WeakMap","WeakSet","Proxy","Reflect","decodeURI","decodeURIComponent","encodeURI","encodeURIComponent","escape","unescape","eval","isFinite","isNaN","SharedArrayBuffer","Atomics","globalThis","self","WebAssembly", "setTimeout", "setInterval", "clearTimeout", "clearInterval", "EventTarget", "Event", "ErrorEvent", "PromiseRejectionEvent", "onerror", "onrejectionhandled", "onunhandledrejection", "TEMPORARY", "PERSISTENT"];
+        var whitelist = ["Object", "Function", "Array", "Number", "parseFloat", "parseInt", "Infinity", "NaN", "undefined", "Boolean", "String", "Symbol", "Date", "Promise", "RegExp", "Error", "EvalError", "RangeError", "ReferenceError", "SyntaxError", "TypeError", "URIError", "JSON", "Math", "Intl", "ArrayBuffer", "Uint8Array", "Int8Array", "Uint16Array", "Int16Array", "Uint32Array", "Int32Array", "Float32Array", "Float64Array", "Uint8ClampedArray", "BigUint64Array", "BigInt64Array", "DataView", "Map", "BigInt", "Set", "WeakMap", "WeakSet", "Proxy", "Reflect", "decodeURI", "decodeURIComponent", "encodeURI", "encodeURIComponent", "escape", "unescape", "eval", "isFinite", "isNaN", "SharedArrayBuffer", "Atomics", "globalThis", "self", "WebAssembly", "setTimeout", "setInterval", "clearTimeout", "clearInterval", "EventTarget", "Event", "ErrorEvent", "PromiseRejectionEvent", "onerror", "onrejectionhandled", "onunhandledrejection", "TEMPORARY", "PERSISTENT"];
         var blacklist = ["onmessage", "onmessageerror", "postMessage"];
         var root_keys = Object.getOwnPropertyNames(self).concat(Object.getOwnPropertySymbols(self) || []);
         var root_length = root_keys.length;
         var EventTarget = self.EventTarget;
         var EventTargetProto = null;
-        if(EventTarget) { 
+        if (EventTarget) {
             EventTargetProto = EventTarget.prototype;
             rootEventTarget = new EventTarget();
         }
         apis.addEventListener = (...args) => {
-            if(args.length < 2) return;
-            if(String(args[0]) == "message") return;
+            if (args.length < 2) return;
+            if (String(args[0]) == "message") return;
             return addEventListener(...args);
         };
-        for(var i = 0; i < root_length; i++) {
+        for (var i = 0; i < root_length; i++) {
             var key = root_keys[i];
-            if(blacklist.includes(key)) {
+            if (blacklist.includes(key)) {
                 var desc;
-                if((desc = Object.getOwnPropertyDescriptor(self, key))) {
-                    if(typeof key == 'string' && key.startsWith("on") && !desc.set) {
+                if ((desc = Object.getOwnPropertyDescriptor(self, key))) {
+                    if (typeof key == 'string' && key.startsWith("on") && !desc.set) {
                         try {
-                            Object.defineProperty(self, key, {get: () => undefined, set: () => { throw new root.errors.ReferenceError("You cannot add a listener for " + key); }, configurable: false, enumerable: false});
-                        } catch(ex) { Promise.reject(ex); try { delete self[key] } catch(ex) {} }
+                            Object.defineProperty(self, key, { get: () => undefined, set: () => { throw new root.errors.ReferenceError("You cannot add a listener for " + key); }, configurable: false, enumerable: false });
+                        } catch (ex) { Promise.reject(ex); try { delete self[key] } catch (ex) { } }
                     } else {
                         try {
-                            Object.defineProperty(self, key, {value: undefined, configurable: true, enumerable: false, writable: true});
-                        } catch(ex) { Promise.reject(ex); }
-                        try { delete self[key] } catch(ex) {}
+                            Object.defineProperty(self, key, { value: undefined, configurable: true, enumerable: false, writable: true });
+                        } catch (ex) { Promise.reject(ex); }
+                        try { delete self[key] } catch (ex) { }
                     }
                 }
                 continue;
             }
-            if(whitelist.includes(key)) continue;
-            if(key == null) continue;
-            try { if(!apis[key]) apis[key] = self[key]; } catch(ex) {}
+            if (whitelist.includes(key)) continue;
+            if (key == null) continue;
+            try { if (!apis[key]) apis[key] = self[key]; } catch (ex) { }
             var desc;
-            if((desc = Object.getOwnPropertyDescriptor(self, key))) {
-                if(typeof key == 'string' && key.startsWith("on")) {
-                    if(desc.set) {
+            if ((desc = Object.getOwnPropertyDescriptor(self, key))) {
+                if (typeof key == 'string' && key.startsWith("on")) {
+                    if (desc.set) {
                         ((key, desc) => {
                             var ev = key.substr(2);
                             var me = self;
                             var copy = { get: desc.get, set: desc.set, enumerable: false, configurable: true };
-                            if(!apiEvents[ev]) apiEvents[ev] = { desc: copy, allowed: false, allow: () => { if(apiEvents[ev].allowed) return; root.util.defineProperty(me, key, copy); apiEvents[ev].allowed = true; registerRootListener(ev); }};
+                            if (!apiEvents[ev]) apiEvents[ev] = { desc: copy, allowed: false, allow: () => { if (apiEvents[ev].allowed) return; root.util.defineProperty(me, key, copy); apiEvents[ev].allowed = true; registerRootListener(ev); } };
                         })(key, desc);
                     } else {
                         (key => {
                             var ev = key.substr(2);
-                            if(!apiEvents[ev]) apiEvents[ev] = { desc, allowed: false, allow: () => { if(apiEvents[ev].allowed) return; apiEvents[ev].allowed = true; registerRootListener(ev); } };
+                            if (!apiEvents[ev]) apiEvents[ev] = { desc, allowed: false, allow: () => { if (apiEvents[ev].allowed) return; apiEvents[ev].allowed = true; registerRootListener(ev); } };
                             try {
                                 var val = undefined;
-                                Object.defineProperty(self, key, {get: () => val, set: v => { if(!apiEvents[key].allowed) throw new root.errors.ReferenceError("You cannot add a listener for " + key); val = v; }, enumerable: false, configurable: false });
-                            } catch(ex) { Promise.reject(ex); try { delete self[key]; } catch(ex) {} }
+                                Object.defineProperty(self, key, { get: () => val, set: v => { if (!apiEvents[key].allowed) throw new root.errors.ReferenceError("You cannot add a listener for " + key); val = v; }, enumerable: false, configurable: false });
+                            } catch (ex) { Promise.reject(ex); try { delete self[key]; } catch (ex) { } }
                         })(key);
                         continue;
                     }
                 }
                 try {
-                    Object.defineProperty(self, key, {value: undefined, configurable: true, enumerable: false, writable: true});
-                } catch(ex) { Promise.reject(ex); }
-                try { delete self[key] } catch(ex) {}
+                    Object.defineProperty(self, key, { value: undefined, configurable: true, enumerable: false, writable: true });
+                } catch (ex) { Promise.reject(ex); }
+                try { delete self[key] } catch (ex) { }
             }
 
         }
         //prototype chain bug. if you delete a property, the prototype property is not deleted so you have access to that.
         var proto = self;
         var hasEvent = false;
-        while(proto && proto != Object.prototype) {
+        while (proto && proto != Object.prototype) {
             try {
-               Object.setPrototypeOf(proto, Object.prototype);
-               break;
-            } catch(ex) {
-               proto = Object.getPrototypeOf(proto);
-               if(proto == EventTargetProto) {
+                Object.setPrototypeOf(proto, Object.prototype);
+                break;
+            } catch (ex) {
+                proto = Object.getPrototypeOf(proto);
+                if (proto == EventTargetProto) {
                     hasEvent = true;
                     proto = Object.getPrototypeOf(proto);
-               }
-               if(!proto || proto == Object.prototype) break;
-               root_keys = Object.getOwnPropertyNames(proto).concat(Object.getOwnPropertySymbols(proto) || []);
-               root_length = root_keys.length;
-               for(var i = 0; i < root_length; i++) {
-                   var key = root_keys[i];
-                   if(key == null) continue;
-                   if(whitelist.includes(key)) continue;
-                   var desc;
-                   try { if(!apis[key]) apis[key] = proto[key]; } catch(ex) {}
-                   if((desc = Object.getOwnPropertyDescriptor(proto, key))) {
-                       if(typeof key == 'string' && key.startsWith("on")) {
-                           if(desc.set) {
-                               ((key, desc) => {
-                                   var ev = key.substr(2);
-                                   var me = self;
-                                   var copy = { get: desc.get, set: desc.set, enumerable: false, configurable: true };
-                                   if(!apiEvents[ev]) apiEvents[ev] = { desc: copy, allowed: false, allow: () => { if(apiEvents[ev].allowed) return; root.util.defineProperty(me, key, copy); apiEvents[ev].allowed = true; registerRootListener(ev); }};
-                               })(key, desc);
+                }
+                if (!proto || proto == Object.prototype) break;
+                root_keys = Object.getOwnPropertyNames(proto).concat(Object.getOwnPropertySymbols(proto) || []);
+                root_length = root_keys.length;
+                for (var i = 0; i < root_length; i++) {
+                    var key = root_keys[i];
+                    if (key == null) continue;
+                    if (whitelist.includes(key)) continue;
+                    var desc;
+                    try { if (!apis[key]) apis[key] = proto[key]; } catch (ex) { }
+                    if ((desc = Object.getOwnPropertyDescriptor(proto, key))) {
+                        if (typeof key == 'string' && key.startsWith("on")) {
+                            if (desc.set) {
+                                ((key, desc) => {
+                                    var ev = key.substr(2);
+                                    var me = self;
+                                    var copy = { get: desc.get, set: desc.set, enumerable: false, configurable: true };
+                                    if (!apiEvents[ev]) apiEvents[ev] = { desc: copy, allowed: false, allow: () => { if (apiEvents[ev].allowed) return; root.util.defineProperty(me, key, copy); apiEvents[ev].allowed = true; registerRootListener(ev); } };
+                                })(key, desc);
                             } else {
                                 (key => {
                                     var ev = key.substr(2);
-                                    if(!apiEvents[ev]) apiEvents[ev] = { desc, allowed: false, allow: () => { if(apiEvents[ev].allowed) return; apiEvents[ev].allowed = true; registerRootListener(ev); } };
+                                    if (!apiEvents[ev]) apiEvents[ev] = { desc, allowed: false, allow: () => { if (apiEvents[ev].allowed) return; apiEvents[ev].allowed = true; registerRootListener(ev); } };
                                     try {
                                         var val = undefined;
-                                        Object.defineProperty(self, key, {get: () => val, set: v => { if(!apiEvents[key].allowed) throw new root.errors.ReferenceError("You cannot add a listener for " + key); val = v; }, configurable: true, enumerable: false });
-                                    } catch(ex) { Promise.reject(ex); try { delete self[key]; } catch(ex) {} }
+                                        Object.defineProperty(self, key, { get: () => val, set: v => { if (!apiEvents[key].allowed) throw new root.errors.ReferenceError("You cannot add a listener for " + key); val = v; }, configurable: true, enumerable: false });
+                                    } catch (ex) { Promise.reject(ex); try { delete self[key]; } catch (ex) { } }
                                 })(key);
                                 continue;
                             }
-                      }
-                      try {
-                          Object.defineProperty(proto, key, {value: undefined, configurable: true, enumerable: false, writable: true});
-                      } catch(ex) { Promise.reject(ex); }
-                      try { delete proto[key] } catch(ex) {}
-                   }
-               }
+                        }
+                        try {
+                            Object.defineProperty(proto, key, { value: undefined, configurable: true, enumerable: false, writable: true });
+                        } catch (ex) { Promise.reject(ex); }
+                        try { delete proto[key] } catch (ex) { }
+                    }
+                }
             }
         }
         proto = Object.getPrototypeOf(self);
-        if(proto == Object.prototype) self[Symbol.toStringTag] = "JailedGlobal";
+        if (proto == Object.prototype) self[Symbol.toStringTag] = "JailedGlobal";
         else proto[Symbol.toStringTag] = "JailedGlobal";
-        if(hasEvent) {
+        if (hasEvent) {
             proto = EventTargetProto;
             root_keys = Object.getOwnPropertyNames(proto).concat(Object.getOwnPropertySymbols(proto) || []);
             root_length = root_keys.length;
-            for(var i = 0; i < root_length; i++) {
+            for (var i = 0; i < root_length; i++) {
                 var key = root_keys[i];
-                if(key == null || key == 'constructor') continue;
-                if(whitelist.includes(key)) continue;
+                if (key == null || key == 'constructor') continue;
+                if (whitelist.includes(key)) continue;
                 var old = proto[key];
-                if(key == "addEventListener" || key == "removeEventListener" || key == "dispatchEvent") {
-                    if(old && EventTargetProto.dispatchEvent && key == "addEventListener") {
+                if (key == "addEventListener" || key == "removeEventListener" || key == "dispatchEvent") {
+                    if (old && EventTargetProto.dispatchEvent && key == "addEventListener") {
                         ((add, dispatch) => {
-                            if(!add || !dispatch) return;
+                            if (!add || !dispatch) return;
                             var reg = [];
                             registerRootListener = name => {
                                 name = name + '';
-                                if(name == 'message' || name == 'messageerror') return;
-                                if(reg.includes(name)) return;
+                                if (name == 'message' || name == 'messageerror') return;
+                                if (reg.includes(name)) return;
                                 add(name, dispatch);
                                 reg[root.util.arrayLength(reg)] = name;
                             };
@@ -449,12 +449,12 @@
                             registerRootListener("unhandledrejection");
                         })(root.bind(old, self), root.bind(EventTargetProto.dispatchEvent, rootEventTarget));
                     }
-                    if(old) {
+                    if (old) {
                         ((proto, key, old) => {
                             var old_name = old.toString();
                             var old_to_str = old.toString.toString();
-                            proto[key] = function(...args) {
-                                if(this === self) return root.apply(old, root.util.arrayConcat([rootEventTarget], args));
+                            proto[key] = function (...args) {
+                                if (this === self) return root.apply(old, root.util.arrayConcat([rootEventTarget], args));
                                 else return root.apply(old, root.util.arrayConcat([this], args));
                             }
                             proto[key].toString = () => old_name;
@@ -463,34 +463,34 @@
                         continue;
                     }
                 }
-                try { if(!apis[key]) apis[key] = proto[key]; } catch(ex) {}
-                if(Object.getOwnPropertyDescriptor(proto, key)) {
+                try { if (!apis[key]) apis[key] = proto[key]; } catch (ex) { }
+                if (Object.getOwnPropertyDescriptor(proto, key)) {
                     try {
-                        Object.defineProperty(proto, key, {value: undefined, configurable: true, enumerable: false, writable: true});
-                    } catch(ex) { Promise.reject(ex); }
-                    try { delete proto[key]; } catch(ex) {}
+                        Object.defineProperty(proto, key, { value: undefined, configurable: true, enumerable: false, writable: true });
+                    } catch (ex) { Promise.reject(ex); }
+                    try { delete proto[key]; } catch (ex) { }
                 }
             }
         }
         //edits to apis is allowed.
     })();
-    
+
     /* 
         We won't let the malicous code manage any communication between jail and the main program.
         So we delete any communication function from the global scope, while we coppied these functions
         in the 'root' object.
     */
 
-    
+
 
     var addMessageListener;
     var data;
     var imports = {
-        valueToMessage: function(value) {
+        valueToMessage: function (value) {
             var valueToMessage = imports.valueToMessage;
             var isStatic = value instanceof StaticType;
             var deep = false;
-            if(isStatic) {
+            if (isStatic) {
                 deep = value.deep;
                 value = value.value;
             }
@@ -514,82 +514,82 @@
             var Set = root.Set;
             var Date = root.Date;
             index = JSON.stringify(index);
-            if(typeof value == 'undefined') {
+            if (typeof value == 'undefined') {
                 return 'undefined';
-            } else if(value == null) {
+            } else if (value == null) {
                 return 'null';
-            } else if(value === self) {
+            } else if (value === self) {
                 return 'self';
-            } else if(typeof value == 'number' || typeof value == 'string' || typeof value == 'boolean') {
-                if(typeof value == 'number' && util.isNaN(value)) {
+            } else if (typeof value == 'number' || typeof value == 'string' || typeof value == 'boolean') {
+                if (typeof value == 'number' && util.isNaN(value)) {
                     return "NaN";
-                } else if(value == Infinity) {
+                } else if (value == Infinity) {
                     return 'Infinity';
-                } else if(value == -Infinity) {
+                } else if (value == -Infinity) {
                     return 'Infinity_negative';
                 } else {
                     return JSON.stringify(value);
                 }
-            } else if(typeof value == 'function') {
+            } else if (typeof value == 'function') {
                 var index = null;
                 var objkeys = util.keys(data.objs);
                 var objlen = util.arrayLength(objkeys);
-                for(var i = 0; i < objlen; i++) {
+                for (var i = 0; i < objlen; i++) {
                     var key = objkeys[i];
-                    if(data.objs[key] == value) {
+                    if (data.objs[key] == value) {
                         index = key;
                         break;
                     }
                 }
-                if(index == null) {
+                if (index == null) {
                     index = data.count++;
                     data.objs[index] = value;
                 }
-                if(isStatic) {
+                if (isStatic) {
                     return "WrapperFunction(" + String(index) + ")";
                 } else {
                     return "Function(" + String(index) + ")";
                 }
-            } else if(typeof value == 'symbol') {
+            } else if (typeof value == 'symbol') {
                 var objkeys = util.keys(data.objs);
                 var objlen = util.arrayLength(objkeys);
-                for(var i = 0; i < objlen; i++) {
+                for (var i = 0; i < objlen; i++) {
                     var key = objkeys[i];
-                    if(data.objs[key] === value) {
+                    if (data.objs[key] === value) {
                         return "Symbol(" + String(key) + "," + JSON.stringify(util.symbolDescription(value)) + ")";
                     }
                 }
                 var index = data.count++;
                 data.objs[index] = value;
                 return "Symbol(" + String(index) + "," + JSON.stringify(util.symbolDescription(value)) + ")";
-            } else if(typeof value == 'boolean') {
+            } else if (typeof value == 'boolean') {
                 return value ? 'true' : 'false';
-            } else if(value instanceof Symbol) {
+            } else if (value instanceof Symbol) {
                 var primitive = value.valueOf();
                 var p_index = null;
                 var objkeys = util.keys(data.objs);
                 var objlen = util.arrayLength(objkeys);
-                for(var i = 0; i < objlen; i++) {
+                for (var i = 0; i < objlen; i++) {
                     var key = objkeys[i];
-                    if(data.objs[key] === primitive) {
+                    if (data.objs[key] === primitive) {
                         p_index = key;
                         break;
                     }
                 }
-                if(p_index == null) {
+                if (p_index == null) {
                     p_index = data.count++;
                     data.objs[p_index] = primitive;
                 }
-                if(isStatic) {
+                if (isStatic) {
                     var str = "SymbolObject(" + String(p_index) + "," + JSON.stringify(util.symbolDescription(primitive)) + ",{";
                     var keys = util.keys(value);
                     var len = util.arrayLength(keys);
-                    for(var i = 0; i < len; i++) {
+                    for (var i = 0; i < len; i++) {
                         var key = keys[i];
-                        if(key == undefined) continue;
+                        if (key == undefined) continue;
                         var v = undefined;
-                        try{ v = value[key]; } catch(ex){}
-                        if(i > 0) str += ',';
+                        try { v = value[key]; } catch (ex) { }
+                        if (i > 0) str += ',';
                         str += valueToMessage(key) + ':' + valueToMessage(deep ? new StaticType(v, true) : v);
                     }
                     return str + '})';
@@ -598,17 +598,17 @@
                     data.objs[index] = value;
                     return "SymbolObject(" + String(p_index) + "," + JSON.stringify(util.symbolDescription(primitive)) + "," + String(index) + ")";
                 }
-            } else if(value instanceof StringType) {
-                if(isStatic) {
+            } else if (value instanceof StringType) {
+                if (isStatic) {
                     var keys = util.keys(value);
                     var len = util.arrayLength(keys);
                     var str = "String(" + JSON.stringify(String(value)) + ",{";
-                    for(var i = 0; i < len; i++) {
+                    for (var i = 0; i < len; i++) {
                         var key = keys[i];
-                        if(key == undefined) continue;
+                        if (key == undefined) continue;
                         var v = undefined;
-                        try { v = value[key]; } catch(ex) {}
-                        if(i > 0) str += ',';
+                        try { v = value[key]; } catch (ex) { }
+                        if (i > 0) str += ',';
                         str += valueToMessage(key) + ':' + valueToMessage(deep ? new StaticType(v, true) : v);
                     }
                     return str + '})';
@@ -616,28 +616,28 @@
                     var index = null;
                     var objkeys = util.keys(data.objs);
                     var objlen = util.arrayLength(objkeys);
-                    for(var i = 0; i < objlen; i++) {
+                    for (var i = 0; i < objlen; i++) {
                         var key = objkeys[i];
-                        if(data.objs[key] === value) {
+                        if (data.objs[key] === value) {
                             index = key;
                             break;
                         }
                     }
-                    if(index == null) index = data.count++;
+                    if (index == null) index = data.count++;
                     data.objs[index] = value;
                     return "String(" + String(index) + "," + JSON.stringify(String(value)) + ")";
                 }
-            } else if(value instanceof Number) {
-                if(isStatic) {
+            } else if (value instanceof Number) {
+                if (isStatic) {
                     var keys = util.keys(value);
                     var len = util.arrayLength(keys);
                     var str = "Number(" + String(value) + ",{";
-                    for(var i = 0; i < len; i++) {
+                    for (var i = 0; i < len; i++) {
                         var key = keys[i];
-                        if(key == undefined) continue;
+                        if (key == undefined) continue;
                         var v = undefined;
-                        try { v = value[key]; } catch(ex) {}
-                        if(i > 0) str += ',';
+                        try { v = value[key]; } catch (ex) { }
+                        if (i > 0) str += ',';
                         str += valueToMessage(key) + ':' + valueToMessage(deep ? new StaticType(v, true) : v);
                     }
                     return str + '})';
@@ -645,28 +645,28 @@
                     var index = null;
                     var objkeys = util.keys(data.objs);
                     var objlen = util.arrayLength(objkeys);
-                    for(var i = 0; i < objlen; i++) {
+                    for (var i = 0; i < objlen; i++) {
                         var key = objkeys[i];
-                        if(data.objs[key] === value) {
+                        if (data.objs[key] === value) {
                             index = key;
                             break;
                         }
                     }
-                    if(index == null) index = data.count++;
+                    if (index == null) index = data.count++;
                     data.objs[index] = value;
                     return "Number(" + String(index) + "," + String(value) + ")";
                 }
-            } else if(value instanceof Date) {
-                if(isStatic) {
+            } else if (value instanceof Date) {
+                if (isStatic) {
                     var keys = util.keys(value);
                     var len = util.arrayLength(keys);
                     var str = "Date(" + String(util.getDateTime(value)) + ",{";
-                    for(var i = 0; i < len; i++) {
+                    for (var i = 0; i < len; i++) {
                         var key = keys[i];
-                        if(key == undefined) continue;
+                        if (key == undefined) continue;
                         var v = undefined;
-                        try { v = value[key]; } catch(ex) {}
-                        if(i > 0) str += ',';
+                        try { v = value[key]; } catch (ex) { }
+                        if (i > 0) str += ',';
                         str += valueToMessage(key) + ':' + valueToMessage(deep ? new StaticType(v, true) : v);
                     }
                     return str + '})';
@@ -674,28 +674,28 @@
                     var index = null;
                     var objkeys = util.keys(data.objs);
                     var objlen = util.arrayLength(objkeys);
-                    for(var i = 0; i < objlen; i++) {
+                    for (var i = 0; i < objlen; i++) {
                         var key = objkeys[i];
-                        if(data.objs[key] === value) {
+                        if (data.objs[key] === value) {
                             index = key;
                             break;
                         }
                     }
-                    if(index == null) index = data.count++;
+                    if (index == null) index = data.count++;
                     data.objs[index] = value;
                     return "Date(" + String(index) + "," + String(util.getDateTime(value)) + ")";
                 }
-            } else if(value instanceof Boolean) {
-                if(isStatic) {
+            } else if (value instanceof Boolean) {
+                if (isStatic) {
                     var keys = util.keys(value);
                     var len = util.arrayLength(keys);
                     var str = "Boolean(" + (util.booleanValue(value) ? 'true' : 'false') + ",{";
-                    for(var i = 0; i < len; i++) {
+                    for (var i = 0; i < len; i++) {
                         var key = keys[i];
-                        if(key == undefined) continue;
+                        if (key == undefined) continue;
                         var v = undefined;
-                        try { v = value[key]; } catch(ex) {}
-                        if(i > 0) str += ',';
+                        try { v = value[key]; } catch (ex) { }
+                        if (i > 0) str += ',';
                         str += valueToMessage(key) + ':' + valueToMessage(deep ? new StaticType(v, true) : v);
                     }
                     return str + '})';
@@ -703,41 +703,41 @@
                     var index = null;
                     var objkeys = util.keys(data.objs);
                     var objlen = util.arrayLength(objkeys);
-                    for(var i = 0; i < objlen; i++) {
+                    for (var i = 0; i < objlen; i++) {
                         var key = objkeys[i];
-                        if(data.objs[key] === value) {
+                        if (data.objs[key] === value) {
                             index = key;
                             break;
                         }
                     }
-                    if(index == null) index = data.count++;
+                    if (index == null) index = data.count++;
                     data.objs[index] = value;
                     return "Boolean(" + String(index) + "," + (util.booleanValue(value) ? 'true' : 'false') + ")";
                 }
-            } else if(value instanceof Promise) {
+            } else if (value instanceof Promise) {
                 var index = null;
                 var objkeys = util.keys(data.objs);
                 var objlen = util.arrayLength(objkeys);
-                for(var i = 0; i < objlen; i++) {
+                for (var i = 0; i < objlen; i++) {
                     var key = objkeys[i];
-                    if(data.objs[key] === value) {
+                    if (data.objs[key] === value) {
                         index = key;
                         break;
                     }
                 }
-                if(index == null) index = data.count++;
+                if (index == null) index = data.count++;
                 data.objs[index] = value;
-                if(isStatic) {
+                if (isStatic) {
                     return "WrapperPromise(" + String(index) + ")";
                 } else {
                     return "Promise(" + String(index) + ")";
                 }
-            } else if(value instanceof Array) {
-                if(isStatic) {
+            } else if (value instanceof Array) {
+                if (isStatic) {
                     var str = "["
                     var len = util.arrayLength(value);
-                    for(var i = 0; i < len; i++) {
-                        if(i > 0) str += ',';
+                    for (var i = 0; i < len; i++) {
+                        if (i > 0) str += ',';
                         str += "" + valueToMessage(deep ? new StaticType(value[i], true) : value[i]) + "";
                     }
                     return str + ']';
@@ -745,45 +745,45 @@
                     var index = null;
                     var objkeys = util.keys(data.objs);
                     var objlen = util.arrayLength(objkeys);
-                    for(var i = 0; i < objlen; i++) {
+                    for (var i = 0; i < objlen; i++) {
                         var key = objkeys[i];
-                        if(data.objs[key] === value) {
+                        if (data.objs[key] === value) {
                             index = key;
                             break;
                         }
                     }
-                    if(index == null) index = data.count++;
+                    if (index == null) index = data.count++;
                     data.objs[index] = value;
                     return "Array(" + String(index) + ')';
                 }
-            } else if(value instanceof Error) {
+            } else if (value instanceof Error) {
                 var typeName = 'Error';
-                for(var name in errors) {
+                for (var name in errors) {
                     try {
-                        if(value instanceof errors[name]) {
+                        if (value instanceof errors[name]) {
                             typeName = String(name);
                             break;
                         }
-                    } catch(e) {}
+                    } catch (e) { }
                 }
-                if(isStatic) {
+                if (isStatic) {
                     var keys = util.keys(value);
                     var len = util.arrayLength(keys);
                     var str = '{';
-                    for(var i = 0; i < len; i++) {
+                    for (var i = 0; i < len; i++) {
                         var key = keys[i];
-                        if(key == undefined) continue;
+                        if (key == undefined) continue;
                         var v = undefined;
-                        try { v = value[key]; } catch(ex) {}
-                        if(i > 0) str += ',';
+                        try { v = value[key]; } catch (ex) { }
+                        if (i > 0) str += ',';
                         str += valueToMessage(key) + ':' + valueToMessage(deep ? new StaticType(v, true) : v);
                     }
                     try {
                         return "Error(" + JSON.stringify(typeName) + "," + JSON.stringify(String(value.name)) + "," + JSON.stringify(String(value.message)) + "," + JSON.stringify(String(value.stack)) + "," + str + '})';
-                    } catch(ex) {
+                    } catch (ex) {
                         try {
                             return "Error(" + JSON.stringify(typeName) + "," + JSON.stringify(String(value.name)) + "," + JSON.stringify(String("No message from this error")) + "," + JSON.stringify(String("No stack from this error")) + "," + str + '})';
-                        } catch(e) {
+                        } catch (e) {
                             return "Error(" + JSON.stringify(typeName) + "," + JSON.stringify("No name for this error") + "," + JSON.stringify("No message from this error") + "," + JSON.stringify("No stack from this error") + "," + str + "})";
                         }
                     }
@@ -791,94 +791,94 @@
                     var index = null;
                     var objkeys = util.keys(data.objs);
                     var objlen = util.arrayLength(objkeys);
-                    for(var i = 0; i < objlen; i++) {
+                    for (var i = 0; i < objlen; i++) {
                         var key = objkeys[i];
-                        if(data.objs[key] === value) {
+                        if (data.objs[key] === value) {
                             index = key;
                             break;
                         }
                     }
-                    if(index == null) index = data.count++;
+                    if (index == null) index = data.count++;
                     data.objs[index] = value;
                     return "Error(" + JSON.stringify(typeName) + "," + JSON.stringify(String(value.name)) + "," + JSON.stringify(String(value.message)) + "," + JSON.stringify(String(value.stack)) + "," + String(index) + ")";
                 }
-            } else if(value instanceof Set) {
-                if(isStatic) {
+            } else if (value instanceof Set) {
+                if (isStatic) {
                     var keys = util.keys(value);
                     var len = util.arrayLength(keys);
                     var info = util.set.values(value);
                     var str = "Set(" + valueToMessage(new StaticType(info, deep)) + ",{";
-                    for(var i = 0; i < len; i++) {
+                    for (var i = 0; i < len; i++) {
                         var key = keys[i];
-                        if(key == undefined) continue;
+                        if (key == undefined) continue;
                         var v = undefined;
-                        try { v = value[key]; } catch(ex) {}
-                        if(i > 0) str += ',';
+                        try { v = value[key]; } catch (ex) { }
+                        if (i > 0) str += ',';
                         str += valueToMessage(key) + ':' + valueToMessage(deep ? new StaticType(v, true) : v);
                     }
                     return str + '})';
-                 } else {
+                } else {
                     var index = null;
                     var objkeys = util.keys(data.objs);
                     var objlen = util.arrayLength(objkeys);
-                    for(var i = 0; i < objlen; i++) {
+                    for (var i = 0; i < objlen; i++) {
                         var key = objkeys[i];
-                        if(data.objs[key] === value) {
+                        if (data.objs[key] === value) {
                             index = key;
                             break;
                         }
                     }
-                    if(index == null) index = data.count++;
+                    if (index == null) index = data.count++;
                     data.objs[index] = value;
                     return "Set(" + String(index) + ")";
-                 }
-            } else if(value instanceof Map) {
-                if(isStatic) {
+                }
+            } else if (value instanceof Map) {
+                if (isStatic) {
                     var keys = util.map.keys(value);
                     var len = util.arrayLength(keys);
                     var arr = [];
                     var x = 0;
-                    for(var i = 0; i < len; i++) {
+                    for (var i = 0; i < len; i++) {
                         arr[x++] = new StaticType([keys[i], util.map.get(value, keys[i])], deep);
                     }
                     keys = util.keys(value);
                     len = util.arrayLength(keys);
                     var str = "Map(" + valueToMessage(new StaticType(arr, deep)) + ",{";
-                    for(var i = 0; i < len; i++) {
+                    for (var i = 0; i < len; i++) {
                         var key = keys[i];
-                        if(key == undefined) continue;
+                        if (key == undefined) continue;
                         var v = undefined;
-                        try { v = value[key]; } catch(ex) {}
-                        if(i > 0) str += ',';
+                        try { v = value[key]; } catch (ex) { }
+                        if (i > 0) str += ',';
                         str += valueToMessage(key) + ':' + valueToMessage(deep ? new StaticType(v, true) : v);
                     }
                     return str + '})';
                 } else {
-                   var index = null;
+                    var index = null;
                     var objkeys = util.keys(data.objs);
                     var objlen = util.arrayLength(objkeys);
-                    for(var i = 0; i < objlen; i++) {
+                    for (var i = 0; i < objlen; i++) {
                         var key = objkeys[i];
-                        if(data.objs[key] === value) {
+                        if (data.objs[key] === value) {
                             index = key;
                             break;
                         }
                     }
-                    if(index == null) index = data.count++;
+                    if (index == null) index = data.count++;
                     data.objs[index] = value;
                     return "Map(" + String(index) + ")";
                 }
             } else {
-                if(isStatic) {
+                if (isStatic) {
                     var keys = util.keys(value);
                     var len = util.arrayLength(keys);
                     var str = '{';
-                    for(var i = 0; i < len; i++) {
+                    for (var i = 0; i < len; i++) {
                         var key = keys[i];
-                        if(key == undefined) continue;
+                        if (key == undefined) continue;
                         var v = undefined;
-                        try { v = value[key]; } catch(ex) {}
-                        if(i > 0) str += ',';
+                        try { v = value[key]; } catch (ex) { }
+                        if (i > 0) str += ',';
                         str += valueToMessage(key) + ':' + valueToMessage(deep ? new StaticType(v, true) : v);
                     }
                     return str + '}';
@@ -886,21 +886,21 @@
                     var index = null;
                     var objkeys = util.keys(data.objs);
                     var objlen = util.arrayLength(objkeys);
-                    for(var i = 0; i < objlen; i++) {
+                    for (var i = 0; i < objlen; i++) {
                         var key = objkeys[i];
-                        if(data.objs[key] === value) {
+                        if (data.objs[key] === value) {
                             index = key;
                             break;
                         }
                     }
-                    if(index == null) index = data.count++;
+                    if (index == null) index = data.count++;
                     data.objs[index] = value;
                     return "Object(" + String(index) + ")";
                 }
             }
-            
+
         },
-        messageToValue: function(type, index, value) {
+        messageToValue: function (type, index, value) {
             var valueToMessage = imports.valueToMessage;
             var Promise = root.Promise;
             var Error = root.Error;
@@ -908,66 +908,66 @@
             var String = root.String;
             var Map = root.Map;
             var util = root.util;
-            if(index in data.objs && type != 'error') return data.objs[index];
-            if(type == 'function') {
-                var r = function() {
+            if (index in data.objs && type != 'error') return data.objs[index];
+            if (type == 'function') {
+                var r = function () {
                     var str = 'Call(' + index + ',' + valueToMessage(this);
                     var args = util.toArray(arguments);
-                    for(var i = 0; i < util.arrayLength(args); i++) {
+                    for (var i = 0; i < util.arrayLength(args); i++) {
                         str += ',' + valueToMessage(args[i]);
                     }
                     str += ')';
                     root.postMessage(str);
-                    return new Promise(function(resolve, reject) {
-                        addMessageListener(function(r, s) {
-                            if(s) resolve(r);
+                    return new Promise(function (resolve, reject) {
+                        addMessageListener(function (r, s) {
+                            if (s) resolve(r);
                             else reject(r);
                         });
                     });
                 };
                 util.defineProperty(r, 'toString', {
-                    configurable: false, 
-                    enumerable: false, 
+                    configurable: false,
+                    enumerable: false,
                     writable: false,
                     value: jailed_to_string
                 });
                 data.objs[index] = r;
                 return r;
-            } else if(type == 'promise') {
-                var pr = new Promise(function(resolve, reject) {
+            } else if (type == 'promise') {
+                var pr = new Promise(function (resolve, reject) {
                     var ind = data.count++;
                     data.count += 2;
-                    data.objs[ind] = function(r) {
+                    data.objs[ind] = function (r) {
                         resolve(r);
                         delete data.objs[ind];
-                        delete data.objs[ind+1];
+                        delete data.objs[ind + 1];
                     };
-                    data.objs[ind + 1] = function(r) {
+                    data.objs[ind + 1] = function (r) {
                         reject(r);
                         delete data.objs[ind];
-                        delete data.objs[ind+1];
+                        delete data.objs[ind + 1];
                     };
                     root.postMessage('RegisterPromise(' + String(index) + ',' + String(ind) + ',' + String(ind + 1) + ')');
                 });
                 data.objs[index] = pr;
                 return pr;
-            } else if(type == 'error') {
+            } else if (type == 'error') {
                 value = index;
                 var cls = errors[value.type];
-                if(!cls) cls = Error;
+                if (!cls) cls = Error;
                 var err = new cls(value.message);
                 try {
                     err.name = err.name;
                     err.main_stack = value.stack;
                     err.toString = () => err.stack + '\r\n' + value.stack;
                     err.toString.toString = () => "function toString() { [native code] }";
-                } catch(ex) {}
+                } catch (ex) { }
                 return err;
-            } else if(type == 'map') {
+            } else if (type == 'map') {
                 value = index;
                 var len = util.arrayLength(value);
                 var map = new Map();
-                for(var i = 0; i < len; i++) {
+                for (var i = 0; i < len; i++) {
                     var item = value[i];
                     util.map.set(map, item[0], item[1]);
                 }
@@ -976,7 +976,7 @@
         }
     };
 
-    (function() {
+    (function () {
         /* Imports from global, this prevents any overwrites */
         var addEventListener = root.addEventListener;
         var postMessage = root.postMessage;
@@ -986,7 +986,7 @@
         var AsyncFunction = root.AsyncFunction;
         var GeneratorFunction = root.GeneratorFunction;
         var Symbol = root.Symbol;
-        var JSON = {parse: root.JSON.parse, stringify: root.JSON.stringify};
+        var JSON = { parse: root.JSON.parse, stringify: root.JSON.stringify };
         var Array = root.Array;
         var util = root.util;
         var bind = root.bind;
@@ -1000,12 +1000,12 @@
         /* Root for the code from the messages */
         data = {
             self: self,
-            objs: {0: self, 1: apis, 2: apiEvents}, 
-            global: self, 
-            count: 3, 
-            snippets: {}, 
-            postMessage: postMessage, 
-            wrap: imports.messageToValue, 
+            objs: { 0: self, 1: apis, 2: apiEvents },
+            global: self,
+            count: 3,
+            snippets: {},
+            postMessage: postMessage,
+            wrap: imports.messageToValue,
             root,
             util,
             global_eval,
@@ -1013,59 +1013,59 @@
             apiEvents,
             registerRootListener,
             rootEventTarget,
-            symbol: function(x, y) {
-                if(x in data.objs) return data.objs[x];
+            symbol: function (x, y) {
+                if (x in data.objs) return data.objs[x];
                 else {
                     var s;
-                    if(y == undefined) s = Symbol();
+                    if (y == undefined) s = Symbol();
                     else s = Symbol(y);
                     data.objs[x] = s;
                     return s;
                 }
             },
-            static: function(x, y) {
-                if(y == undefined) y = true;
-                if(typeof x == 'object' || typeof x == 'function') {
+            static: function (x, y) {
+                if (y == undefined) y = true;
+                if (typeof x == 'object' || typeof x == 'function') {
                     return new StaticType(x, y);
                 } else {
                     return x;
                 }
             },
-            whitelist: function(x) {
-                if(!(x instanceof Array)) {
+            whitelist: function (x) {
+                if (!(x instanceof Array)) {
                     x = [x];
                 }
                 var len = util.arrayLength(x);
                 var didall = true;
-                for(var i = 0; i < len; i++) {
+                for (var i = 0; i < len; i++) {
                     var key = x[i];
-                    if(!(typeof key == 'string')) {
+                    if (!(typeof key == 'string')) {
                         didall = false;
                         continue;
                     }
-                    if(!(key in apis)) {
+                    if (!(key in apis)) {
                         didall = false;
                         continue;
                     }
-                    if(key in self) continue;
-                    this.util.defineProperty(self, key, {configurable: true, enumerable: false, writable: true, value: apis[key]})
+                    if (key in self) continue;
+                    this.util.defineProperty(self, key, { configurable: true, enumerable: false, writable: true, value: apis[key] })
                 }
                 return didall;
             },
-            whitelistEvent: function(x) {
-                if(!(x instanceof Array)) x = [x];
+            whitelistEvent: function (x) {
+                if (!(x instanceof Array)) x = [x];
                 var len = util.arrayLength(x);
                 var didall = true;
-                for(var i = 0; i < len; i++) {
+                for (var i = 0; i < len; i++) {
                     var key = x[i];
-                    if(!(typeof key == 'string')) {
+                    if (!(typeof key == 'string')) {
                         didall = false;
                         continue;
                     }
-                    if(!(key in apiEvents)) {
+                    if (!(key in apiEvents)) {
                         registerRootListener(key);
                     } else {
-                        if(apiEvents[key].allowed) continue;
+                        if (apiEvents[key].allowed) continue;
                         apiEvents[key].allow();
                     }
                 }
@@ -1074,11 +1074,11 @@
         };
         var snippets = data.snippets;
         var valueToMessage = imports.valueToMessage;
-        addMessageListener = function(f) {
+        addMessageListener = function (f) {
             util.push(stack, f);
         };
 
-        addEventListener('message', function(e) {
+        addEventListener('message', function (e) {
             /**
              * There are two types of messages:
              * 1. Communication manage message: the code in these messages are
@@ -1086,39 +1086,39 @@
              * 2. Eval messages: The code in these message are not trusted
              *                   and are only executed in the global space.
              */
-            if(typeof e.data == 'string' || e.data instanceof StringType) {
+            if (typeof e.data == 'string' || e.data instanceof StringType) {
                 var code = util.trim(String(e.data));
                 var stackLength = util.arrayLength(stack);
-                if(stackLength > 0 && util.startsWith(code, ">")) {
+                if (stackLength > 0 && util.startsWith(code, ">")) {
                     util.pop(stack)(apply(new Function(code.substring(1)), [data, true]), true);
                     return;
                 }
-                if(stackLength > 0 && util.startsWith(code, "<")) {
+                if (stackLength > 0 && util.startsWith(code, "<")) {
                     util.pop(stack)(apply(new Function(code.substring(1)), [data, false]), false);
                     return;
                 }
                 try {
-                    if(util.startsWith(code, "\"")) {
+                    if (util.startsWith(code, "\"")) {
                         var search = util.indexOf(code, "\";");
-                        if(search < 0) return;
+                        if (search < 0) return;
                         var name = JSON.parse(util.substring(code, 0, search + 1));
-                        if(name == undefined) return;
-                        if(!(name in snippets)) return;
+                        if (name == undefined) return;
+                        if (!(name in snippets)) return;
                         var snippet = snippets[name];
                         code = util.substring(code, search + 2);
                         apply(snippet, [data, code]);
                     } else {
                         try {
                             postMessage('Return(' + valueToMessage(apply(new Function(e.data), [data])) + ')');
-                        } catch(ex) {
+                        } catch (ex) {
                             postMessage('ReturnError(' + valueToMessage(ex) + ')');
                         }
                     }
-                } catch(ex) {
+                } catch (ex) {
                     postMessage('Error(' + valueToMessage(ex) + ')');
                 }
             } else {
-                if(stackLength > 0) {
+                if (stackLength > 0) {
                     util.pop(stack)(e.data);
                     return;
                 }
@@ -1126,52 +1126,52 @@
             }
         });
 
-        snippets.eval = function(code) {
+        snippets.eval = function (code) {
             try {
                 postMessage('Return(' + valueToMessage(global_eval(code)) + ')');
-            } catch(ex) {
+            } catch (ex) {
                 postMessage('ReturnError(' + valueToMessage(ex) + ')');
             }
         };
-        snippets.eval_static = function(code) {
+        snippets.eval_static = function (code) {
             try {
                 postMessage('Return(' + valueToMessage(data.static(global_eval(code))) + ')');
-            } catch(ex) {
+            } catch (ex) {
                 postMessage('ReturnError(' + valueToMessage(data.static(ex)) + ')');
             }
         };
-        snippets.function = function(code) {
+        snippets.function = function (code) {
             try {
                 postMessage('Return(' + valueToMessage(apply(new Function(code), [self])) + ')');
-            } catch(ex) {
+            } catch (ex) {
                 postMessage('ReturnError(' + valueToMessage(ex) + ')');
             }
         };
-        snippets.async_function = function(code) {
+        snippets.async_function = function (code) {
             try {
                 postMessage('Return(' + valueToMessage(apply(new AsyncFunction(code), [self])) + ')');
-            } catch(ex) {
+            } catch (ex) {
                 postMessage('ReturnError(' + valueToMessage(ex) + ')');
             }
         };
-        snippets.generator_function = function(code) {
+        snippets.generator_function = function (code) {
             try {
                 postMessage('Return(' + valueToMessage(apply(new GeneratorFunction(code), [self])) + ')');
-            } catch(ex) {
+            } catch (ex) {
                 postMessage('ReturnError(' + valueToMessage(ex) + ')');
             }
         };
         var _apply = Function.prototype.apply; //_apply for call
-        snippets.call = function(code) {
+        snippets.call = function (code) {
             try {
                 var r = apply(new Function(code), [data]);
-                if(!("bind" in r)) {
+                if (!("bind" in r)) {
                     r.bind = self;
                 }
-                postMessage('Return(' + valueToMessage(apply(function() {
+                postMessage('Return(' + valueToMessage(apply(function () {
                     return bind(_apply, r.function)(this, r.args);
                 }, [r.bind])) + ')');
-            } catch(ex) {
+            } catch (ex) {
                 postMessage('ReturnError(' + valueToMessage(ex) + ')');
             }
         }
@@ -1181,8 +1181,8 @@
      * By declaring the eval function here (and giving it as argument to the closure), we absolutely know
      * that the eval function has no access to any variables in the closure.
      */
-    (function(_globalEval_, _myCode_) {
+    (function (_globalEval_, _myCode_) {
         arguments = undefined;
-        return (1,_globalEval_)(_myCode_);
+        return (1, _globalEval_)(_myCode_);
     }).bind(self, self.eval.bind(self))
 );

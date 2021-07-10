@@ -7,18 +7,8 @@
     <body>
         <div id="termDiv"></div>
         <script type="text/javascript">
-            var convert_variable_to_string = async function(result) {
-                if(typeof result == 'undefined') return 'undefined';
-                else if(result == null) return 'null';
-                else if(result instanceof JailObject) {
-                    if(result.isFunction()) {
-                        result = await result.invoke('toString', result, []);
-                    } else if(result.isRoot()) {
-                        result = 'self';
-                    } else {
-                        result = await convert_variable_to_string(await result.resolve(false));
-                    }
-                } else if(result instanceof JailPromise) {
+            var convert_variable_to_string = function(result) {
+                return JailJS.variableToString(result, async result => {
                     term.write('Promise ');
                     var c = term.c;
                     var rr = term.r;
@@ -40,72 +30,7 @@
                         term.prompt();
                     });
                     return null;
-                } else if(result instanceof Error) {
-                    if(result instanceof JailError && result.cause) return String(result.cause);
-                    else return String(result);
-                } else if(typeof result == 'object') {
-                    if(result == null) return 'null';
-                    if(result instanceof Array) {
-                        var str = '[';
-                        var len = result.length;
-                        for(var i = 0; i < len; i++) {
-                            if(i > 0) str += ',';
-                            str += await convert_variable_to_string(result[i]);
-                        }
-                        return str + ']';
-                    } else {
-                        var str;
-                        var first = true;
-                        if(result instanceof Number) {
-                            str = '{' + String(result);
-                            first = false;
-                        } else if(result instanceof String) {
-                            str = '{' + JSON.stringify(String(result));
-                            first = false;
-                        } else if(result instanceof Boolean) {
-                            str = '{' + (result.valueOf() ? 'true' : 'false');
-                            first = false;
-                        } else if(result instanceof Symbol) {
-                            str = '{' + result.toString();
-                            first = false;
-                        } else {
-                            str = '{';
-                        }
-                        var keys = Object.getOwnPropertyNames(result);
-                        var allowed = "abcdefghijlkmnopqrstuvwxyzABCDEFHIJKLMNOPQRSTUVWXYZ_";
-                        for(var i = 0; i < keys.length; i++) {
-                            var key = keys[i];
-                            if(isFinite(key) && result instanceof String) continue;
-                            if(!first) str += ', ';
-                            if(key == undefined) continue;
-                            var value = result[key];
-                            var can = false;
-                            if(typeof key == 'string') {
-                                can = true;
-                                var strlen = key.length;
-                                for(var x = 0; x < strlen; x++) {
-                                    var chr = key.charAt(x);
-                                    if(!(allowed.includes(chr) || (x > 0 && isFinite(chr)))) {
-                                        can = false;
-                                        break;
-                                    }
-                                }
-                            }
-                            first = false;
-                            str += (can ? key : await convert_variable_to_string(key)) + ': ' + await convert_variable_to_string(value);
-                        }
-                        return str + '}';
-
-                    }
-                } else if(typeof result == 'function') {
-                    if('wrapper' in result) convert_variable_to_string(result.wrapper);
-                    result = result.toString();
-                } else if(typeof result == 'string') {
-                    return JSON.stringify(result);
-                } else {
-                    result = String(result);
-                }
-                return result;
+                });
             }
             var jail = undefined;
             var root = undefined;
