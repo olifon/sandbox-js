@@ -8,7 +8,6 @@
     instead it safely parses the messages (with a special syntax) with its own parser.
     This is not the case for data comming from the main thread (but it is allowed to execute code in the worker).
 */
-can
 class JailError extends Error {
     constructor(innerError, message, obj) {
         super(message == null ? innerError : message);
