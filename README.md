@@ -9,6 +9,9 @@ There are no other libraries required for this library. The only thing that is r
 
 You need to add both 'jailjs.js' and 'jailed.js' to your project, but only include 'jailjs.js' (it is not a module) as a source file. The 'jailed.js' is the source code for the worker where the jailed code is going to be executed in. You can change the 'jailedPath' variable in jailjs.js to change the location of the jailed.js file.
 
+
+Try it out: https://olifon.github.io/sandbox-js/terminal.html
+
 Examples of chroot JS:
 
 ```Javascript
