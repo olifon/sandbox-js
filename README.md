@@ -1,6 +1,9 @@
-# Chroot JS
+# JailJS
 
-This small javascript library can sandbox javascript, this means that the javascript gets a new global root. You can run any javascript code that may be malicious. It is a safe sandbox that the javascript can't exit and where you have full control over.
+This small javascript library can sandbox javascript, this means that the javascript gets a new global root. You can run any javascript code that may be malicious. It is a safe sandbox that the javascript can't escape and where your main code has full control over such as inspecting objects, evaling code in different ways, timeouts, invoking functions, adding API functions, etc. Most of the sandboxes expose a lot of functions and objects to the code. Most of those exposed objects are not needed for the code. Also they have very limited API for the sandbox, most of them can only execute code and print a (primitive) returned value. 
+
+This sandbox however can do a lot of things. You can insert your own API functions that are exposed to code in the sandbox, set what the sandbox is allowed to,
+add Synchronous functions (if those functions are invoked, the sandbox 'freezes' and waits for a return from the main) and Asynchronous functions, it runs the sandbox in a different thread with a different javascript context (so that it can never block your main program), invoke functions and wait on promises, staring up multiple sandboxes concurrently, and you can inspect (or modify) any javascript object using the API with this sandbox, including custom made javascript objects. Objects supported out of the box: all primitives including symbol and bigint, arrays, promise, functions, map, set, date, and more.
 
 
 ## Getting Started
@@ -9,10 +12,12 @@ There are no other libraries required for this library. The only thing that is r
 
 You need to add both 'jailjs.js' and 'jailed.js' to your project, but only include 'jailjs.js' (it is not a module) as a source file. The 'jailed.js' is the source code for the worker where the jailed code is going to be executed in. You can change the 'jailedPath' variable in jailjs.js to change the location of the jailed.js file.
 
-
 Try it out: https://olifon.github.io/sandbox-js/terminal.html
 
-Examples of chroot JS:
+termlib.js, test.js, test.html and terminal.html are used for the DEMO (not part of the library). You only need jailed.js and jailjs.js, just copy paste them in your project.
+
+
+Examples:
 
 ```Javascript
 var jail = new JailJS();
@@ -193,7 +198,7 @@ Atomics (and shared javascript memory) support is limited (2021). So it does not
 
 **NOTE**: DO NOT COMPILE or BUNDLE jailed.js with tools like Webpack or Babel. Those tools introduce extra values to jailed.js that could leak some objects for the sandboxed code. It also add extra global values, change the closures etc, and a possible chance that jailed.js won't work anymore. Especially for the bundlers, those insert extra code that is not made to be run in a sandboxed environment. Because that code is always ran first, the chance is very high that it would expose a ton of objects to the sandboxed code. However, it is perfectly fine to bundle and compile jailjs.js (the script that runs on the main thread, because it does not execute any code, it only instructs the Worker to execute code), but do not bundle jailed.js. Edit your webpack config that jailed.js needs to be left unmodified. If you use bundlers, you may change the path to the jailed.js in jailjs.js. (jailedPath=)
 
-## Benefits of chroot JS
+## Benefits of JailJS
 
 1. It is completely safe, the code runs in a completely seperated and isolated javascript context. It cannot access any of the variables from the main program. And it can neither access dangerous functions in the worker's global like postMessage.
 2. It is fast, you don't have to check the code before it is executed. The code runs in a native VM provided by the browser. The code can only access some basic functions and objects. You can whitelist more features if you want.
@@ -234,12 +239,42 @@ Objects:
 * Function (see Function section)
 * Promise (if the promise resolves in the main code it will be resolved (the value is copied) in the sandbox. Or rejected in the sandbox)
 * TypedArray (such as UInt8Array and Float64Array)
-  * Also als return value for synchronous functions
+  * Also as return value for synchronous functions
   * If a synchronous function returns a SharedArrayBuffer, the memory cannot be shared with the worker. A new shared array buffer is created on the worker with the same contents
   * If it is not to share memory: the SharedArrayBuffer will be copied and the memory is NOT shared (silent error)
     See https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/SharedArrayBuffer/Planned_changes
     * However you always can retrieve the contents of a buffer using the .get on the JailObject.
 * ArrayBuffer and SharedArrayBuffer
+
+There are two ways to get an object from the sandbox:
+1. Reference to an object
+   You can get a 'reference' to an object using the JailObject.
+   The JailObject class has a lot of asynchronous functions to modify the object
+   Such as setting properties, defining properties with descriptors, getting descriptors, freeze/seal the object, getting all the keys in the object, invoke functions, delete properties, setup getters/setters etc
+
+   Functions are also JailObject and you can call them with the .invoke function
+2. Resolving a object
+   If you decide to resolve a object (if you have a reference, or you tell to the api that the object needs to be resolved immediately)
+   then the object will be copied. Modifications made on the sandbox from that point do not reflect on the object in the main code and vice versa.
+   There are two types of resolving:
+   * Not deep:
+     If you do not resolve a object 'deep', children properties will not be resolved.
+     This means that if you resolve a JailObject that represents an array with objects (not deep), you will get an array of JailObjects
+   * Deep:
+     this means that the object is resolved entirely, including the children (and children of children etc) of the object.
+     everything is copied to the main
+
+   special resolve case:
+   * Function: if a JailObject representing a 'Function' is resolved, a Function is returned that is linked with the function in the sandbox.
+               calling that function will call the function in the sandbox. Those functions always return a Promise.
+               If the function in the sandbox returns a Promise, the linked function will return a JailPromise (resolved) to prevent chaining
+   * Promise:  if a JailObject representing a 'Promise' is resolved, a JailPromise is returned. 
+               You can get a Promise instance from a JailPromise with the .value property.
+               If the promises resolves in the sandbox or rejects it will also resolve/reject in the main.
+   * SharedArrayBuffer:
+               A SharedArrayBuffer, as the name implies, will share the memory with the sandbox. This will only happens if you browser allow sharing memory
+               with a SharedArrayBuffer. If not, the contents of a SharedArrayBuffer is copied instead.
+               
 
 **Objects from the SANDBOX**
 
