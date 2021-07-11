@@ -420,7 +420,7 @@
          * You can allow more by copying the values from apis.
          */
         //Temporary and persistent are constants that cannot be redefined
-        var whitelist = ["Object", "Function", "Array", "Number", "parseFloat", "parseInt", "Infinity", "NaN", "undefined", "Boolean", "String", "Symbol", "Date", "Promise", "RegExp", "Error", "EvalError", "RangeError", "ReferenceError", "SyntaxError", "TypeError", "URIError", "JSON", "Math", "Intl", "ArrayBuffer", "Uint8Array", "Int8Array", "Uint16Array", "Int16Array", "Uint32Array", "Int32Array", "Float32Array", "Float64Array", "Uint8ClampedArray", "BigUint64Array", "BigInt64Array", "DataView", "Map", "BigInt", "Set", "WeakMap", "WeakSet", "Proxy", "Reflect", "decodeURI", "decodeURIComponent", "encodeURI", "encodeURIComponent", "escape", "unescape", "eval", "isFinite", "isNaN", "SharedArrayBuffer", "Atomics", "globalThis", "self", "WebAssembly", "setTimeout", "setInterval", "clearTimeout", "clearInterval", "EventTarget", "Event", "ErrorEvent", "PromiseRejectionEvent", "onerror", "onrejectionhandled", "onunhandledrejection", "TEMPORARY", "PERSISTENT"];
+        var whitelist = ["Object", "Function", "Array", "Number", "parseFloat", "parseInt", "Infinity", "NaN", "undefined", "Boolean", "String", "Symbol", "Date", "Promise", "RegExp", "Error", "EvalError", "RangeError", "ReferenceError", "SyntaxError", "TypeError",, "atob", "btoa", "AggregateError", "URIError", "JSON", "Math", "Intl", "ArrayBuffer", "Uint8Array", "Int8Array", "Uint16Array", "Int16Array", "Uint32Array", "Int32Array", "Float32Array", "Float64Array", "Uint8ClampedArray", "BigUint64Array", "BigInt64Array", "DataView", "Map", "BigInt", "Set", "WeakMap", "WeakSet", "Proxy", "Reflect", "decodeURI", "decodeURIComponent", "encodeURI", "encodeURIComponent", "escape", "unescape", "eval", "isFinite", "isNaN", "SharedArrayBuffer", "Atomics", "globalThis", "self", "WebAssembly", "setTimeout", "setInterval", "clearTimeout", "clearInterval", "EventTarget", "Event", "ErrorEvent", "PromiseRejectionEvent", "onerror", "onrejectionhandled", "onunhandledrejection", "TEMPORARY", "PERSISTENT"];
         var blacklist = ["onmessage", "onmessageerror", "postMessage"];
         var root_keys = Object.getOwnPropertyNames(self).concat(Object.getOwnPropertySymbols(self) || []);
         var root_length = root_keys.length;
@@ -501,7 +501,7 @@
                     if (key == null) continue;
                     if (whitelist.includes(key)) continue;
                     var desc;
-                    try { if (!apis[key]) apis[key] = proto[key]; } catch (ex) { }
+                    try { if (!apis[key]) apis[key] = proto[key]; } catch (ex) {  try { if(!apis[key]) apis[key] = self[key] } catch(ex) {} }
                     if ((desc = Object.getOwnPropertyDescriptor(proto, key))) {
                         if (typeof key == 'string' && key.startsWith("on")) {
                             if (desc.set) {
