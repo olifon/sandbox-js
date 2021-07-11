@@ -119,9 +119,9 @@ The code runs in a new global with its own context in a seperate thread, and not
 ```
 
 8. Synchronous API supported
-Normally, API functions always return Promises. Now you can also register functions that do return directly in the Jail.
-The Jail will wait for the function in the main thread to finish before returning. 
-The only small problem is that the jail is frozen.
+Normally, API functions always return Promises. Now you can also register functions that do return directly in the sandbox.
+The sandbox will wait for the function in the main thread to finish before returning. 
+The only small problem is that the sandbox is frozen.
 
 Example:
 
@@ -175,7 +175,7 @@ Example:
     await jail.terminate();
 })();
 ```
-So if you make asynchronous function, synchronous for the jail, it is limited. You cannot use the jail API in those functions.
+So if you make asynchronous function, synchronous for the sandbox, it is limited. You cannot use the sandbox API in those functions.
 
 You can test it with: 
 ```javascript 
@@ -191,15 +191,144 @@ The function is made synchronously in the jail with loadFileSync
 
 Atomics (and shared javascript memory) support is limited (2021). So it does not work on all browsers.
 
-NOTE: DO NOT COMPILE or BUNDLE jailed.js with tools like Webpack or Babel. Those tools introduce extra values to jailed.js that could leak some objects for the sandboxed code. It also add extra global values, change the closures etc, and a possible chance that jailed.js won't work anymore. Especially for the bundlers, those insert extra code that is not made to be run in a sandboxed environment. Because that code is always ran first, the chance is very high that it would expose a ton of objects to the sandboxed code. However, it is perfectly fine to bundle and compile jailjs.js (the script that runs on the main thread, because it does not execute any code, it only instructs the Worker to execute code), but do not bundle jailed.js. Edit your webpack config that jailed.js needs to be left unmodified. If you use bundlers, you may change the path to the jailed.js in jailjs.js. (jailedPath=)
+**NOTE**: DO NOT COMPILE or BUNDLE jailed.js with tools like Webpack or Babel. Those tools introduce extra values to jailed.js that could leak some objects for the sandboxed code. It also add extra global values, change the closures etc, and a possible chance that jailed.js won't work anymore. Especially for the bundlers, those insert extra code that is not made to be run in a sandboxed environment. Because that code is always ran first, the chance is very high that it would expose a ton of objects to the sandboxed code. However, it is perfectly fine to bundle and compile jailjs.js (the script that runs on the main thread, because it does not execute any code, it only instructs the Worker to execute code), but do not bundle jailed.js. Edit your webpack config that jailed.js needs to be left unmodified. If you use bundlers, you may change the path to the jailed.js in jailjs.js. (jailedPath=)
 
 ## Benefits of chroot JS
 
 1. It is completely safe, the code runs in a completely seperated and isolated javascript context. It cannot access any of the variables from the main program. And it can neither access dangerous functions in the worker's global like postMessage.
 2. It is fast, you don't have to check the code before it is executed. The code runs in a native VM provided by the browser. The code can only access some basic functions and objects. You can whitelist more features if you want.
 3. No Denial of Service attacks, all tasks returns promises. Whenever the code is going to execute some nasty code (like while(true) {}), you can set timeouts that will stop the worker when the execution takes too long.
-4. No limits. No features of Ecmascript are blocked because of security and vulnerabilities. The jailed code can use any basic function or object. You can also whitelist more objects provided by the worker like 'XMLHttpRequest'
+4. No limits. No features of Ecmascript are blocked because of security and vulnerabilities. The sandboxed code can use any basic function or object. You can also whitelist more objects provided by the worker like 'XMLHttpRequest'
+
+**NOTE**: Do not whitelist objects like XMLHttpRequest for untrusted code. The Worker runs with the same origin as the website. This means it can access all the cookies, storages (like indexed db) etc. All of this is disabled by default of course and only vanilla JS objects are exposed. Try to create own API functions, that validates data, and expose them to the sandbox with root.set.
+
 5. You have full control over the code that is going to be executed. There is no way that the malicious code can delete or modifiy this access.
+
+## Exposing objects
+It is possible to expose objects and functions to the sandbox. The following types are supported:
+
+
+**Objects from the MAIN:**
+
+The following objects are supported. Those objects will then be **copied** to the Jail, so further edits on the objects do not have impact on the objects
+in the jail
+
+Primitives:
+* number
+* boolean
+* string
+* bigint
+* symbol
+
+Objects:
+* Number
+* Boolean
+* String
+* BigInt
+* Symbol
+* Date
+* Map
+* Set
+* Error (also the vanilla javascript errors like TypeError)
+* Object (plain javascript objects, prototype chain not walked)
+* Function (see Function section)
+* Promise (if the promise resolves in the main code it will be resolved (the value is copied) in the sandbox. Or rejected in the sandbox)
+
+**Objects from the SANDBOX**
+
+
+Primitives:
+* number
+* boolean
+* string
+* bigint
+* symbol
+
+All objects comming from the sandbox will return a JailObject (if not resolved), including Functions, Proxy etc
+Some objects can be resolved to an Object for the main code:
+
+Resolved objects:
+* Number
+* Boolean
+* String
+* BigInt
+* Symbol
+* Date
+* Map
+* Set
+* JailError
+  * If an Error is thrown, it will be thrown as a JailError. The JailError contains the stack from the main
+  * the .cause will be set as a resolved Error object from the sandbox (with the stack from the sandbox)
+  * You can get the JailObject from a JailError with the .obj property.
+  * Stack main is : JailError.stack
+  * Stack sandbox is : JailError.cause.stack
+* Object (plain javascript objects, prototype chain not walked)
+* Function (see Function section, will always return a Promise)
+* JailPromise 
+ * Resolved promises returned from the SANDBOX will always resolve in a JailPromise (a wrapper for a Promise).
+ * This prevents chaining with the returned Promises from the API functions. 
+ * You can get the original promise with the .value on JailPromise)
+
+You can also manipulate objects with the API:
+
+Supports special operations on:
+* Array
+  * Check if array with .isArray()
+  * You can get the length with .length() on a JailObject
+  * You can add items with .set(await .length(), ...)
+  * More operations will be added in the future
+* Map
+  * Entire API (JailMap)
+  * Get the JailMap with .valueOf()
+* Set
+  * Entire API (JailSet)
+  * Get the JailSet with .valueOf()
+* Function
+  * Invoke with .invoke
+  * Support for constructors will be added in the future
+
+You can retrieve some objects with the .valueOf() without resolving from a JailObject:
+* Number object -> number primitive
+* Boolean object -> boolean primitive
+* String object -> string primitive
+* BigInt object -> bigint primitive
+* Symbol object -> symbol primitive
+* Date
+* Map -> JailMap
+* Set -> JailSet
+* Error
+  * The valueOf() returns a Error (not a JailError), that is equal to the JailError.cause
+  * You can get a JailError instance (which also contains the main stack) with getJailError()
+* Function
+  * Has a reference to the JailObject. It actually uses the .invoke on the JailObject
+  * You can get the JailObject with the .wrapper property
+* JailPromise
+
+valueOf() does not send ask anything to the sandbox, information returned by valueOf() was already received by the sandbox.
+
+Other things like plain javascript objects needs to be resolved.
+
+Functions:
+* All sort of functions
+* Properties on the function objects are NOT exposed
+* The 'this' value of the function will not be exchanged when a function is called.
+  * The sandbox cannot change the 'this' for functions from the main code. So do not use those functions as functions on classes.
+  * You can apply a 'this' for functions from the sandboxed, if you have the JailObject, with .invoke(this_arg, arguments_array)
+* Functions from the sandboxed code always return Promises and cannot be made Synchronously (for security)
+* Functions from the main code can be made Synchronously with the JailSynchronousFunction() (Atomics needs to be supported in browser)
+  * First enable it with jail.enableSynchronousAPI();
+  * There is no JailPromise class in the sandbox. So Promises returned by API functions exposed to the sandbox will be chained.
+
+
+**Running code in the sandbox**
+You can run code in the sandbox in different ways.
+You can also provide a name for your scripts (useful with errors)
+
+* jail.execute: (Globally) eval the code and return the value (not resolved)
+* jail.executeAsResolved: (Globally) eval and return the value (as a resolved value, so it would never return a JailObject)
+* jail.executeAsFunction: Execute the code in a new Function (Function does not run in a closure) and return the return value (not resolved)
+* jail.executeAsAsyncFunction: Execute the code in a new asynchronous Function (Function does not run in a closure) and return the return value (JailObject with a JailPromise)
+
 
 ## License
 This project is licensed under the MIT License - see the [LICENSE.md](LICENSE.md) file for details
