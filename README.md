@@ -9,7 +9,7 @@ add Synchronous functions (if those functions are invoked, the sandbox 'freezes'
 It is not possible to escape the sandbox or get more access to builtins than you are priviliged to. But if there is a bug in the sandbox or something goes wrong, the origin of the worker equals to "null". so it is not allowed to access any cookies or storage from the main page. This means double protection and you are completely safe against any attack. It is done by setting the origin to a data: URL.
 
 ## What is the difference between other sandboxes ##
-Other sandboxes are quite limited in API. They only allow you to execute some code, and a very simple messaging API
+Other sandboxes have a quite limited in API. They only allow you to execute some code, and a very simple messaging API
 Some of them compiles javascript code, they may be secure but their javascript fuctionality is limited.
 This sandbox howevers can use any fuctionality from the javascript engine. So you can use the this value, prototypes classes etc.
 This sandbox also allows you to pass Buffers, Promises, functions from the main etc.
