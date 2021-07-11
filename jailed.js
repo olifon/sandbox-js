@@ -1038,11 +1038,11 @@
                     }
                 }
                 if(isStatic && !root.crossOriginIsolated && root.SharedArrayBuffer && value instanceof root.SharedArrayBuffer) {
-                    var len = root.utils.bufferLength(value);
+                    var len = root.util.bufferLength(value);
                     var v = new root.ArrayBuffer(len);
                     var y = new root.Uint8Array(v);
                     var z = new root.Uint8Array(value);
-                    for(var i = 0; len; i++) {
+                    for(var i = 0; i < len; i++) {
                         y[i] = z[i];
                     }
                     if(index == null) index = data.count++;
