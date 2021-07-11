@@ -6,6 +6,8 @@ This sandbox however can do a lot of things. You can insert your own API functio
 add Synchronous functions (if those functions are invoked, the sandbox 'freezes' and waits for a return from the main) and Asynchronous functions, it runs the sandbox in a different thread with a different javascript context (so that it can never block your main program), invoke functions and wait on promises, staring up multiple sandboxes concurrently, and you can inspect (or modify) any javascript object using the API with this sandbox, including custom made javascript objects. Objects supported out of the box: all primitives including symbol and bigint, arrays, promise, functions, map, set, date, and more.
 
 
+It is not possible to escape the sandbox or get more access to builtins than you are priviliged to. But if there is a bug in the sandbox or something goes wrong, the origin of the worker equals to "null". so it is not allowed to access any cookies or storage from the main page. This means double protection and you are completely safe against any attack. It is done by setting the origin to a data: URL.
+
 ## Getting Started
 
 There are no other libraries required for this library. The only thing that is required is a browser that supports Web Workers and Ecmascript 2015.
