@@ -34,7 +34,7 @@
     /**
      * This function is used for the .tostring by functions recieved from the main program.
      */
-    var jailed_to_string = function () { return "function () { [jail API] }" };
+    var jailed_to_string = function JailedFunctionToString() { return "function " + (this.name || "") + "() { [" + (this.isSynchronous ? "Synchronous " : "") + "Jail API] }" };
 
     /**
      * In the jail, only basic JS function are available.
@@ -126,14 +126,6 @@
         var _buffer_slice = self.Uint8Array ? self.Uint8Array.prototype.slice : null;
         var _array_get_iterator = Array.prototype[Symbol.iterator];
         var _array_next = Object.getPrototypeOf([][Symbol.iterator]()).next;
-        Function.prototype.toString = function () {
-            if (this.toString === jailed_to_string) return apply(jailed_to_string, [this]);
-            else if (this === _f_to_string || this === _f_to_string_string) return _f_str;
-            else if (this === jailed_to_string) return _f_str;
-            else return apply(_f_to_string, [this]);
-        };
-        Function.prototype.toString.toString = function () { return _f_str };
-        Function.prototype.toString.toString[Symbol.toStringTag] = _f_str;
         root = {
             String: function (str) {
                 if (str instanceof _String) {
@@ -1021,8 +1013,30 @@
                 var r = function JailedFunction() {
                     return callFunctionAsyncInMain(arguments);
                 }
+                if(typeof value == 'object' && typeof value.name == 'string') {
+                    try {
+                        util.defineProperty(r, "name", {
+                            configurable: true,
+                            enumerable: false,
+                            writable: false,
+                            value: value.name
+                        });
+                    } catch(ex) {}
+                }
+                util.defineProperty(r, "isJailAPI", {
+                    configurable: true,
+                    enumerable: false,
+                    writable: false,
+                    value: true
+                });
+                util.defineProperty(r, "isSynchronous", {
+                    configurable: true,
+                    enumerable: false,
+                    writable: false,
+                    value: false
+                });
                 util.defineProperty(r, 'toString', {
-                    configurable: false,
+                    configurable: true,
                     enumerable: false,
                     writable: false,
                     value: jailed_to_string
@@ -1074,8 +1088,30 @@
                 var r = function JailedFunction() {
                     return callFunctionSyncInMain(arguments);
                 }
+                if(typeof value == 'object' && typeof value.name == 'string') {
+                    try {
+                        util.defineProperty(r, "name", {
+                            configurable: true,
+                            enumerable: false,
+                            writable: false,
+                            value: value.name
+                        });
+                    } catch(ex) {}
+                }
+                util.defineProperty(r, "isJailAPI", {
+                    configurable: true,
+                    enumerable: false,
+                    writable: false,
+                    value: true
+                });
+                util.defineProperty(r, "isSynchronous", {
+                    configurable: true,
+                    enumerable: false,
+                    writable: false,
+                    value: true
+                });
                 util.defineProperty(r, 'toString', {
-                    configurable: false,
+                    configurable: true,
                     enumerable: false,
                     writable: false,
                     value: jailed_to_string

@@ -703,7 +703,7 @@ class JailPromise {
             }
             if (index == null) index = -(jaileval.objscount++);
             jaileval.funcs[index] = value;
-            return '(this.wrap("function",' + String(index) + '))';
+            return '(this.wrap("function",' + String(index) + ',{name:' + JSON.stringify(value.name) + '}))';
         } else if (typeof value == 'boolean') {
             return value ? 'true' : 'false';
         } else if (value instanceof JailSynchronousFunction) {
@@ -718,7 +718,7 @@ class JailPromise {
             }
             if (index == null) index = -(jaileval.objscount++);
             jaileval.funcs[index] = value;
-            return '(this.wrap("syncfunction",' + String(index) + '))';
+            return '(this.wrap("syncfunction",' + String(index) + ',{name:' + JSON.stringify(value.value.name) + '}))';
         } else if (value instanceof Promise || value instanceof JailPromise) {
             if (value instanceof JailPromise) value = value.value;
             if (index in jaileval.promises) {
