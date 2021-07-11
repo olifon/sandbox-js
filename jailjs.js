@@ -2269,6 +2269,7 @@ class JailPromise {
                 return str + ']';
             } else {
                 var str;
+                var noFinite = false;
                 var first = true;
                 if (result instanceof Number) {
                     str = '{' + String(result);
@@ -2279,6 +2280,7 @@ class JailPromise {
                 } else if (result instanceof String) {
                     str = '{' + JSON.stringify(String(result));
                     first = false;
+                    noFinite = true;
                 } else if (result instanceof Boolean) {
                     str = '{' + (result.valueOf() ? 'true' : 'false');
                     first = false;
@@ -2336,6 +2338,7 @@ class JailPromise {
                         .join(''))
                         if(result.byteLength > 50) str += '...';
                     } else {
+                        noFinite = true;
                         str = '{' + name + ' [';
                         for(var i = 0; i < result.length; i++) {
                             if(i > 0) str += ', ';
@@ -2354,7 +2357,7 @@ class JailPromise {
                 var allowed = "abcdefghijlkmnopqrstuvwxyzABCDEFHIJKLMNOPQRSTUVWXYZ_";
                 for (var i = 0; i < keys.length; i++) {
                     var key = keys[i];
-                    if (isFinite(key) && result instanceof String) continue;
+                    if (noFinite && isFinite(key)) continue;
                     if (!first) str += ', ';
                     if (key == undefined) continue;
                     var value = result[key];

@@ -1064,13 +1064,16 @@
                 }
                 var keys = util.keys(value);
                 var len = util.arrayLength(keys);
+                var first = true;
                 for (var i = 0; i < len; i++) {
                     var key = keys[i];
                     if (key == undefined) continue;
+                    if (!util.isNaN(root.Number(key))) continue;
                     var v = undefined;
                     try { v = value[key]; } catch (ex) { }
-                    if (i > 0) str += ',';
+                    if (!first) str += ',';
                     str += valueToMessage(key) + ':' + valueToMessage(deep ? new StaticType(v, true) : v);
+                    first = false;
                 }
                 return str + '})';
             } else if (value instanceof Set) {
