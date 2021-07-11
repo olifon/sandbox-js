@@ -162,13 +162,14 @@
         }
         root = {
             String: function (str) {
-                if (str instanceof _String) {
+                if (typeof str == 'string') return str;
+                else if (str instanceof _String) {
                     return apply(_s_toString, [str]);
-                } else if (str instanceof root.Number) {
+                } else if (typeof str == 'number' || str instanceof root.Number) {
                     return apply(_n_toString, [str]);
-                } else if (str instanceof root.Boolean) {
+                } else if (typeof str == 'boolean' || str instanceof root.Boolean) {
                     return apply(_b_toString, [str]);
-                } else if (root.BigInt && str instanceof root.BigInt) {
+                } else if (typeof str == 'bigint' || (root.BigInt && str instanceof root.BigInt)) {
                     return apply(_bigint_to_string, [str]);
                 } else {
                     return apply(_String, [self, str]); //apply to not give the 'this' away.
