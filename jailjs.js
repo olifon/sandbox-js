@@ -230,6 +230,7 @@ class JailPromise {
         the classes from jailjs. You may alter these variables (eg using Object.getOwnPropertySymbols),
         but it is deprecated and not recommended..
     */
+    var resolvedBuffers = self.WeakMap ? new WeakMap() : new Map();
     /**
      * The wrapper secret is used to create a JailObject,
      * normally only toJailObject uses this secret. If some code from jailjs.js
@@ -264,10 +265,14 @@ class JailPromise {
      */
     var jail_function = Symbol('jailed function');
     /**
- * This is one of the possible value for jail_array. It means that the object
- * is an jailed array See jail_primitive.
- */
+     * This is one of the possible value for jail_array. It means that the object
+     * is an jailed array See jail_primitive.
+     */
     var jail_array = Symbol('jailed array');
+    /**
+     * This means that a 'jailobject' is a typed array.
+     */
+    var jail_buffer = Symbol('jailed buffer');
     /**
      * We use the stament 'throw jail_error()' to indicate that the message
      * recieved from the jail was incorrect. Normally this means that there is a bug.
@@ -307,11 +312,78 @@ class JailPromise {
                 if (!tokenizer.next(':')) throw jail_error();
                 var value = toValue(jaileval, tokenizer);
                 tokenizer.next(',');
+                if(key in values) continue; //the sandbox is NOT allowed to override properties
                 values[key] = value;
             }
             return true;
         } else return false;
     }
+
+    function numToText(num) {
+        var t = '';
+        for (var i = 0; i < 5; i++) {
+            t += String.fromCharCode(35 + (num % 85));
+            num = ~~(num / 85);
+        }
+        return t;
+    }
+    /*
+         function textToNum(text) {
+            if(text.length != 5) throw new TypeError("text length must be 5");
+            var n = 0;
+            for(var i = 4; i >= 0; i--) {
+                if(i < 4) n *= 85;
+                n += text.charCodeAt(i) - 35;
+            }
+            return n;
+           
+         }
+    */
+
+
+    const TypedArray = self.Uint8Array ? Object.getPrototypeOf(Uint8Array.prototype).constructor : null;
+    function typedArrayToBuffer(array) {
+        if(!(array instanceof TypedArray)) throw new TypeError("Data needs to be a an instanceof a TypedArray");
+        return array.buffer.slice(array.byteOffset, array.byteLength + array.byteOffset)
+    }
+    function binToCompressedText(data) {
+        if (!(data instanceof ArrayBuffer) && (!self.SharedArrayBuffer || !(data instanceof SharedArrayBuffer))) data = typedArrayToBuffer(data);
+        var len = data.byteLength;
+        var ints = ~~(len / 4);
+        var rem = len % 4;
+
+        var res = new Array(ints + 1);
+        res[0] = ''
+        var arr = new Uint32Array(data.slice(0, ints * 4));
+        for (var i = 0; i < ints; i++) {
+            res[i] = numToText(arr[i]);
+        }
+        if (rem > 0) {
+            arr = new Uint8Array(data.slice(ints * 4));
+            var num = 0;
+            //endianess worker == endianess host
+            var narr = new ArrayBuffer(4);
+            var z = new Uint8Array(narr);
+            for (var i = 0; i < (4 - rem); i++) z[i] = arr[i];
+            var num = (new Uint32Array(narr))[0];
+            var mnum = 256 * rem;
+            while (num < mnum) num *= 256;
+            res[ints] = numToText(num);
+        } else res[ints] = '';
+        return res.join('');
+    }
+    /*
+         function compressedTextToBin(txt) {
+            var len = txt.length;
+            if(len % 5 != 0) throw new TypeError("txt must be a multiple of 5");
+            var data = new ArrayBuffer((len / 5) * 4);
+            var arr = new Uint32Array(data);
+            for(var i = 0; i < (len / 5); i++) {
+                arr[i] = textToNum(txt.substring(i * 5, (i + 1) * 5));
+            }
+            return data;
+         }
+    */
 
     /**
      * Return the main JS value from a recieved jailed value.
@@ -588,6 +660,39 @@ class JailPromise {
                 }
                 if (!tokenizer.end()) throw jail_error();
                 return obj;
+            case 'buffer':
+                if (!tokenizer.startCall()) throw jail_error();
+                var index = tokenizer.number();
+                if (index == null) throw jail_error();
+                var obj = toJailObject(jaileval, index, jail_buffer);
+                if(tokenizer.next(',')) {
+                    var value = resolvedBuffers.get(obj);
+                    if (!value) throw jail_error();
+                    if (!assign_object_from_value(jaileval, tokenizer, value)) throw jail_error();
+                    return value;
+                }
+                if (!tokenizer.end()) throw jail_error();
+                return obj;
+            case 'sharedbuffer':
+                if (!tokenizer.startCall()) throw jail_error();
+                var index = tokenizer.number();
+                if (index == null) throw jail_error();
+                var obj = toJailObject(jaileval, index, jail_buffer);
+                var value = resolvedBuffers.get(obj);
+                if (!value) throw jail_error();
+                if(tokenizer.next(',')) {
+                    if (!assign_object_from_value(jaileval, tokenizer, value)) throw jail_error();
+                }
+                if (!tokenizer.end()) throw jail_error();
+                if (!(value instanceof ArrayBuffer) && (!self.SharedArrayBuffer || !(data instanceof SharedArrayBuffer))) throw jail_error();
+                var v = new SharedArrayBuffer(value.byteLength);
+                var y = new Uint8Array(v);
+                var z = new Uint8Array(value);
+                for(var i = 0; i < y.length; i++) {
+                    y[i] = z[i];
+                }
+                resolvedBuffers.set(obj, v);
+                return v;
             case 'set':
                 if (!tokenizer.startCall()) throw jail_error();
                 var index = tokenizer.number();
@@ -663,7 +768,7 @@ class JailPromise {
      * @param {Function} jaileval the session for jail.
      * @param {*} value the value to convert
      */
-    var fromValue = function (jaileval, value) {
+    var fromValue = function (jaileval, value, frozen) {
         if (typeof value == 'undefined') {
             return 'this.root.undefined';
         } else if (value == null) {
@@ -706,6 +811,55 @@ class JailPromise {
             return '(this.wrap("function",' + String(index) + ',{name:' + JSON.stringify(value.name) + '}))';
         } else if (typeof value == 'boolean') {
             return value ? 'true' : 'false';
+        } else if (
+            self.Uint8Array &&
+            (
+                (self.ArrayBuffer && value instanceof ArrayBuffer) ||
+                value instanceof Uint8Array ||
+                value instanceof Uint16Array ||
+                value instanceof Uint32Array ||
+                value instanceof Int8Array ||
+                value instanceof Int16Array ||
+                value instanceof Int32Array ||
+                value instanceof Float32Array ||
+                value instanceof Float64Array ||
+                (self.BigUint64Array && value instanceof BigUint64Array) ||
+                (self.SharedArrayBuffer && value instanceof SharedArrayBuffer)
+            )) {
+
+            //it is not allowed to post SharedArrayBuffers using postMessage if certain HTTP headers are not set
+            //https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/SharedArrayBuffer/Planned_changes
+            if(!self.crossOriginIsolated && self.SharedArrayBuffer && value instanceof self.SharedArrayBuffer) frozen = true;
+            if(frozen) {
+                var types = {
+                    Uint8Array: self.Uint8Array,
+                    Int8Array: self.Int8Array,
+                    Uint16Array: self.Uint16Array,
+                    Int16Array: self.Int16Array,
+                    Uint32Array: self.Uint32Array,
+                    Int32Array: self.Int32Array,
+                    BigUint64Array: self.BigUint64Array,
+                    BigInt64Array: self.BigInt64Array,
+                    Float32Array: self.Float32Array,
+                    Float64Array: self.Float64Array
+                };
+                var name = (self.SharedArrayBuffer && value instanceof SharedArrayBuffer) ? "SharedArrayBuffer" : ((self.ArrayBuffer && value instanceof ArrayBuffer) ? "ArrayBuffer" : null)
+                if(!name) {
+                    for(var key in types) {
+                        if(types[key] && value instanceof types[key]) {
+                            name = key;
+                        }
+                    }
+                }
+                if(!name) throw new TypeError("Unknown binary array");
+                return "this.fromTypedArray(" + JSON.stringify(name) + "," + JSON.stringify(value.byteLength) + "," + JSON.stringify(binToCompressedText(value)) + ")";
+            } else {
+                var index = -(jaileval.objscount++);
+                jaileval.worker.postMessage({index, value});
+                var obj = toJailObject(jaileval, index, jail_buffer);
+                resolvedBuffers.set(obj, value);
+                return "this.objs[" + index + "]";
+            }
         } else if (value instanceof JailSynchronousFunction) {
             if (!jaileval.data_buffer) throw new TypeError("First enable synchronous API before adding synchronous functions");
             var index;
@@ -731,7 +885,7 @@ class JailPromise {
             return '(new this.root.StringType(' + JSON.stringify(String(value)) + '))';
         } else if (value instanceof Number) {
             return '(new this.root.Number(' + String(value) + '))';
-        } else if (value instanceof BigInt) {
+        } else if (self.BigInt && value instanceof BigInt) {
             return '(this.root.Object(this.root.BigInt(' + String(value) + ')))';
         } else if (value instanceof Symbol) {
             var index;
@@ -1265,7 +1419,7 @@ class JailPromise {
          * @param {boolean|undefined} deep If we need to deeply copy objects and arrays. Defaults to true
          */
         resolve(deep) {
-            var r = this.valueOf();
+            var r = this[jail_primitive] === jail_buffer ? null : this.valueOf();
             if (r != null && !(r instanceof JailSet) && !(r instanceof JailMap)) {
                 if (r instanceof Promise) return Promise.resolve(new JailPromise(r));
                 else if (typeof r == 'object' || typeof r == 'function') return Promise.resolve(r);
@@ -1297,6 +1451,9 @@ class JailPromise {
          */
         isArray() {
             return this[jail_primitive] === jail_array;
+        }
+        isBuffer() {
+            return this[jail_primitive] === jail_buffer;
         }
         isSet() {
             return this[jail_primitive] != null && this[jail_primitive] instanceof JailSet;
@@ -1373,6 +1530,8 @@ class JailPromise {
                 return ret;
             } else if (this[jail_primitive] === jail_array) {
                 return null;
+            } else if (this[jail_primitive] === jail_buffer) {
+                return resolvedBuffers.get(this);
             } else {
                 var val = this[jail_primitive];
                 if (val instanceof JailError && val.cause) val = val.cause;
@@ -1531,6 +1690,14 @@ class JailPromise {
                     else postBuff = null;
                     return;
                 }
+                if(typeof e.data == 'object' && e.data.index && e.data.value) {
+                    if(e.data.buffer) {
+                        resolvedBuffers.set(toJailObject(jaileval, e.data.index, jail_buffer), e.data.value);
+                    } else {
+                        jaileval.objs[e.data.index] = e.data.value;
+                    }
+                    return;
+                }
                 var reader = new Tokenizer(e.data);
                 var func = reader.name();
                 if (func == null) throw jail_error();
@@ -1600,10 +1767,10 @@ class JailPromise {
                                         func = func.value;
                                     }
                                     var result = func.apply(thisArg, args);
-                                    if(promise) result = await result;
-                                    rstr = 'return (' + fromValue(jaileval, result) + ');';
+                                    if (promise) result = await result;
+                                    rstr = 'return (' + fromValue(jaileval, result, true) + ');';
                                 } catch (ex) {
-                                    rstr = 'throw (' + fromValue(jaileval, ex) + ');';
+                                    rstr = 'throw (' + fromValue(jaileval, ex, true) + ');';
                                 }
                             } else rstr = 'throw new this.root.ReferenceError("Jail Function not found");'
                             postBuff = (new TextEncoder('utf-8')).encode(rstr);
@@ -1673,8 +1840,8 @@ class JailPromise {
          * @param {string} name the name of the script (optional)
          */
         execute(src, name) {
-            if(!name) name = this.defaultScriptName;
-            if(!name) name = 'sandboxed';
+            if (!name) name = this.defaultScriptName;
+            if (!name) name = 'sandboxed';
             return this[jail_eval]('"eval";//# sourceURL=' + name + '\n' + String(src).replace(/\/\/#\s.+$/gm, ''));
         }
 
@@ -1684,8 +1851,8 @@ class JailPromise {
          * @param {string} src the script to execute
          */
         executeAsResolved(src, name) {
-            if(!name) name = this.defaultScriptName;
-            if(!name) name = 'sandboxed';
+            if (!name) name = this.defaultScriptName;
+            if (!name) name = 'sandboxed';
             return this[jail_eval]('"eval_static";//# sourceURL=' + name + '\n' + String(src).replace(/\/\/#\s.+$/gm, ''));
         }
 
@@ -1694,8 +1861,8 @@ class JailPromise {
          * @param {string} src the script to execute
          */
         executeAsFunction(src) {
-            if(!name) name = this.defaultScriptName;
-            if(!name) name = 'sandboxed';
+            if (!name) name = this.defaultScriptName;
+            if (!name) name = 'sandboxed';
             return this[jail_eval]('"function";//# sourceURL=' + name + '\n' + String(src).replace(/\/\/#\s.+$/gm, ''));
         }
 
@@ -1704,8 +1871,8 @@ class JailPromise {
          * @param {string} src the script to execute
          */
         executeAsAsyncFunction(src) {
-            if(!name) name = this.defaultScriptName;
-            if(!name) name = 'sandboxed';
+            if (!name) name = this.defaultScriptName;
+            if (!name) name = 'sandboxed';
             return this[jail_eval]('"async_function";//# sourceURL=' + name + '\n' + String(src).replace(/\/\/#\s.+$/gm, ''));
         }
 
@@ -1714,8 +1881,8 @@ class JailPromise {
          * @param {string} src the script to execute
          */
         executeAsGeneratorFunction(src) {
-            if(!name) name = this.defaultScriptName;
-            if(!name) name = 'sandboxed';
+            if (!name) name = this.defaultScriptName;
+            if (!name) name = 'sandboxed';
             return this[jail_eval]('"generator_function";//# sourceURL=' + name + '\n' + String(src).replace(/\/\/#\s.+$/gm, ''));
         }
 
@@ -2106,7 +2273,7 @@ class JailPromise {
                 if (result instanceof Number) {
                     str = '{' + String(result);
                     first = false;
-                } else if (result instanceof BigInt) {
+                } else if (self.BigInt != null && result instanceof BigInt) {
                     str = '{' + String(result) + 'n';
                     first = false;
                 } else if (result instanceof String) {
@@ -2126,6 +2293,60 @@ class JailPromise {
                     var list = (await Promise.all([...result.entries()].map(x => Promise.all([variableToString(x[0]), variableToString(x[1])]))));
                     first = list.length < 1;
                     str = '{' + list.map(x => x[0] + " => " + x[1]).join(', ');
+                } else if (self.Uint8Array &&
+                    (
+                        (self.ArrayBuffer && result instanceof ArrayBuffer) ||
+                        result instanceof Uint8Array ||
+                        result instanceof Uint16Array ||
+                        result instanceof Uint32Array ||
+                        result instanceof Int8Array ||
+                        result instanceof Int16Array ||
+                        result instanceof Int32Array ||
+                        result instanceof Float32Array ||
+                        result instanceof Float64Array ||
+                        (self.BigUint64Array && result instanceof BigUint64Array) ||
+                        (self.SharedArrayBuffer && result instanceof SharedArrayBuffer)
+                    )) {
+                    var types = {
+                        Uint8Array: self.Uint8Array,
+                        Int8Array: self.Int8Array,
+                        Uint16Array: self.Uint16Array,
+                        Int16Array: self.Int16Array,
+                        Uint32Array: self.Uint32Array,
+                        Int32Array: self.Int32Array,
+                        BigUint64Array: self.BigUint64Array,
+                        BigInt64Array: self.BigInt64Array,
+                        Float32Array: self.Float32Array,
+                        Float64Array: self.Float64Array
+                    };
+                    var name = (self.SharedArrayBuffer && result instanceof SharedArrayBuffer) ? "SharedArrayBuffer" : ((self.ArrayBuffer && result instanceof ArrayBuffer) ? "ArrayBuffer" : null)
+                    if(!name) {
+                        for(var key in types) {
+                            if(types[key] && result instanceof types[key]) {
+                                name = key;
+                            }
+                        }
+                    }
+                    if(!name) throw new TypeError("Unknown binary array");
+                    name = name.replace("Array", "");
+                    first = false;
+                    if(result instanceof ArrayBuffer || result instanceof SharedArrayBuffer) {
+                        str = '{' + name + ' ' + ([...new Uint8Array(result.slice(0, 50))]
+                        .map(x => x.toString(16).padStart(2, '0'))
+                        .join(''))
+                        if(result.byteLength > 50) str += '...';
+                    } else {
+                        str = '{' + name + ' [';
+                        for(var i = 0; i < result.length; i++) {
+                            if(i > 0) str += ', ';
+                            str += String(result[i]);
+                            if(i > 15) {
+                                str += '...';
+                                break;
+                            }
+                        }
+                        str += ']';
+                    }
                 } else {
                     str = '{';
                 }

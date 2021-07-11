@@ -233,6 +233,13 @@ Objects:
 * Object (plain javascript objects, prototype chain not walked)
 * Function (see Function section)
 * Promise (if the promise resolves in the main code it will be resolved (the value is copied) in the sandbox. Or rejected in the sandbox)
+* TypedArray (such as UInt8Array and Float64Array)
+  * Also als return value for synchronous functions
+  * If a synchronous function returns a SharedArrayBuffer, the memory cannot be shared with the worker. A new shared array buffer is created on the worker with the same contents
+  * If it is not to share memory: the SharedArrayBuffer will be copied and the memory is NOT shared (silent error)
+    See https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/SharedArrayBuffer/Planned_changes
+    * However you always can retrieve the contents of a buffer using the .get on the JailObject.
+* ArrayBuffer and SharedArrayBuffer
 
 **Objects from the SANDBOX**
 
@@ -268,14 +275,11 @@ Resolved objects:
  * Resolved promises returned from the SANDBOX will always resolve in a JailPromise (a wrapper for a Promise).
  * This prevents chaining with the returned Promises from the API functions. 
  * You can get the original promise with the .value on JailPromise)
+* TypedArray (such as UInt8Array and Float64Array)
+* ArrayBuffer and SharedArrayBuffer
 
 On all resolved objects, the enumerable properties of that object are also copied to the main object.
-So if you have a String object with a property foo set, it is also copied to the main object.
-Do not call functions on objects returned from the sandbox. For most objects you can remove those properties:
-* String: String(strobj)
-* Number: Number(numobj)
-* Set: [...set]
-Properties indentified by a Symbol are not copied.
+Only if they did not exist already on the object. (The sandbox cannot override properties)
 
 You can also manipulate objects with the API:
 

@@ -74,9 +74,23 @@
         var _indexOf = String.prototype.indexOf;
         var _startsWith = String.prototype.startsWith;
         var _getLength = Object.getOwnPropertyDescriptor(Array.prototype, 'length');
-        if (_getLength) _getLength = _getLength.get;
+        if (_getLength && _getLength.get) _getLength = _getLength.get;
+        else if (!_getLength || _getLength.configurable) {
+            try {
+                Object.defineProperty(Array.prototype, "length", { value: 0, writable: true, configurable: false });
+            } catch (ex) { }
+            _getLength = undefined;
+        } else _getLength = undefined;
         var _getDescription = Object.getOwnPropertyDescriptor(Symbol.prototype, 'description');
         if (_getDescription) _getDescription = _getDescription.get;
+        var _str_getLength = Object.getOwnPropertyDescriptor(String.prototype, "length");
+        if (_str_getLength && _str_getLength.get) _str_getLength = _str_getLength.get;
+        else if (!_str_getLength || _str_getLength.configurable) {
+            try {
+                Object.defineProperty(String.prototype, "length", { value: 0, writable: false, configurable: false });
+            } catch (ex) { }
+            _str_getLength = undefined;
+        } else _str_getLength = undefined;
         var _getArray = Array.prototype.slice;
         var _trim = String.prototype.trim;
         var _String = String;
@@ -87,13 +101,19 @@
         var _push = Array.prototype.push;
         var _pop = Array.prototype.pop;
         var _concat = Array.prototype.concat;
+        var _join = Array.prototype.join;
         var _f_to_string = Function.prototype.toString;
         var _f_to_string_string = Function.prototype.toString.toString;
         var _f_str = Function.prototype.toString.toString();
+        var _get_charcode = String.prototype.charCodeAt;
         var _promise_then = Promise.prototype.then;
         var _boolean_value_of = Boolean.prototype.valueOf;
-        var _bigint_value_of = BigInt.prototype.valueOf;
-        var _bigint_to_string = BigInt.prototype.toString;
+        var _bigint_value_of;
+        var _bigint_to_string;
+        if(self.BigInt) {
+            _bigint_value_of = BigInt.prototype.valueOf;
+            _bigint_to_string = BigInt.prototype.toString;
+        }
         var _get_date_time = Date.prototype.getTime;
         var _set_add = Set.prototype.add;
         var _set_delete = Set.prototype.delete;
@@ -123,9 +143,23 @@
         else _buffer_get_length = null;
         var _text_encoder_encode = self.TextEncoder ? self.TextEncoder.prototype.encode : null;
         var _text_decoder_decode = self.TextDecoder ? self.TextDecoder.prototype.decode : null;
-        var _buffer_slice = self.Uint8Array ? self.Uint8Array.prototype.slice : null;
+        var _buffer_slice = self.ArrayBuffer ? self.ArrayBuffer.prototype.slice : null;
+        var _sharedbuffer_slice = self.SharedArrayBuffer ? self.SharedArrayBuffer.prototype.slice : null;
         var _array_get_iterator = Array.prototype[Symbol.iterator];
         var _array_next = Object.getPrototypeOf([][Symbol.iterator]()).next;
+
+        var _typedArray = null;
+        var _typedProto = null;
+        var _get_typed_buffer = null;
+        var _get_typed_byteOffset = null;
+        var _get_typed_byteLength = null;
+        if(self.Uint8Array) {
+            _typedProto = Object.getPrototypeOf(self.Uint8Array.prototype);
+            _typedArray = _typedProto.constructor;
+            _get_typed_buffer = Object.getOwnPropertyDescriptor(_typedProto, "buffer").get;
+            _get_typed_byteOffset = Object.getOwnPropertyDescriptor(_typedProto, "byteOffset").get;
+            _get_typed_byteLength = Object.getOwnPropertyDescriptor(_typedProto, "byteLength").get;
+        }
         root = {
             String: function (str) {
                 if (str instanceof _String) {
@@ -134,7 +168,7 @@
                     return apply(_n_toString, [str]);
                 } else if (str instanceof root.Boolean) {
                     return apply(_b_toString, [str]);
-                } else if (str instanceof root.BigInt) {
+                } else if (root.BigInt && str instanceof root.BigInt) {
                     return apply(_bigint_to_string, [str]);
                 } else {
                     return apply(_String, [self, str]); //apply to not give the 'this' away.
@@ -154,13 +188,29 @@
             Set,
             Map,
             Date,
-            BigInt,
+            TypedArray: _typedArray,
+            BigInt: self.BigInt,
             Atomics: self.Atomics,
             ArrayBuffer: self.ArrayBuffer,
             SharedArrayBuffer: self.SharedArrayBuffer,
             Int32Array: self.Int32Array,
             Uint8Array: self.Uint8Array,
             Uint32Array: self.Uint32Array,
+            crossOriginIsolated: self.crossOriginIsolated,
+            arrays: {
+                ArrayBuffer: self.ArrayBuffer,
+                SharedArrayBuffer: self.SharedArrayBuffer,
+                Uint8Array: self.Uint8Array,
+                Int8Array: self.Int8Array,
+                Uint16Array: self.Uint16Array,
+                Int16Array: self.Int16Array,
+                Uint32Array: self.Uint32Array,
+                Int32Array: self.Int32Array,
+                BigUint64Array: self.BigUint64Array,
+                BigInt64Array: self.BigInt64Array,
+                Float32Array: self.Float32Array,
+                Float64Array: self.Float64Array
+            },
             TextEncoder: self.TextEncoder,
             TextDecoder: self.TextDecoder,
             Event: self.Event,
@@ -198,9 +248,17 @@
                 },
                 arrayLength(arr) {
                     if (_getLength == undefined) {
-                        return arr.length; //the .length is not configurable
+                        return apply(_getArray, [arr]).length; //the .length is not configurable
                     } else {
                         return apply(_getLength, [arr]);
+                    }
+                },
+                stringLength(str) {
+                    str = root.String(str);
+                    if (_str_getLength == undefined) {
+                        return str.length;
+                    } else {
+                        return apply(_str_getLength, [str]);
                     }
                 },
                 bufferLength(buff) {
@@ -229,8 +287,8 @@
                 push(arr, val) {
                     return apply(_push, [arr, val]);
                 },
-                pop(arr, val) {
-                    return apply(_pop, [arr, val]);
+                pop(arr) {
+                    return apply(_pop, [arr]);
                 },
                 arrayConcat(x, y) {
                     return apply(_concat, [x, y]);
@@ -309,13 +367,23 @@
                     return apply(_text_decoder_decode, [new root.TextDecoder(encoding), data]);
                 },
                 sliceBufferStart(data, start) {
-                    return apply(_buffer_slice, [data, start]);
+                    return apply((root.SharedArrayBuffer && data instanceof root.SharedArrayBuffer) ? _sharedbuffer_slice : _buffer_slice, [data, start]);
                 },
                 sliceBuffer(data, start, end) {
-                    return apply(_buffer_slice, [data, start, end]);
+                    return apply((root.SharedArrayBuffer && data instanceof root.SharedArrayBuffer) ? _sharedbuffer_slice : _buffer_slice, [data, start, end]);
                 },
                 replaceString(str, from, to) {
                     return apply(_replace_string, [str, from, to]);
+                },
+                joinArray(arr, del) {
+                    return apply(_join, [arr, del]);
+                },
+                charCodeAt(str, index) {
+                    return apply(_get_charcode, [str, index]);
+                },
+                typedArrayToBuffer(array) {
+                    var byteOffset = apply(_get_typed_byteOffset, [array]);
+                    return apply(_buffer_slice, [apply(_get_typed_buffer, [array]), byteOffset, apply(_get_typed_byteLength, [array]) + byteOffset])
                 },
                 keys: bind(Object.keys, Object),
                 defineProperty: bind(Object.defineProperty, Object),
@@ -334,7 +402,8 @@
                 ObjectPreventExtensions: bind(Object.preventExtensions, Object),
                 ObjectIsExtensible: bind(Object.isExtensible, Object),
                 ObjectAssign: bind(Object.assign, Object),
-                AtomicsWait: self.Atomics ? self.Atomics.wait.bind(Atomics) : null,
+                AtomicsWait: (self.Atomics && self.Atomics.wait) ? bind(self.Atomics.wait, Atomics) : null,
+                fromCharCode: bind(String.fromCharCode, String),
                 isNaN,
                 apply,
                 bind
@@ -359,11 +428,6 @@
             EventTargetProto = EventTarget.prototype;
             rootEventTarget = new EventTarget();
         }
-        apis.addEventListener = (...args) => {
-            if (args.length < 2) return;
-            if (String(args[0]) == "message") return;
-            return addEventListener(...args);
-        };
         for (var i = 0; i < root_length; i++) {
             var key = root_keys[i];
             if (blacklist.includes(key)) {
@@ -537,7 +601,69 @@
 
     var addMessageListener;
     var data;
+    var util = root.util;
     var imports = {
+        /*
+        numToText: function (num) {
+            var t = '';
+            for (var i = 0; i < 5; i++) {
+                t += util.fromCharCode(35 + (num % 85));
+                num = ~~(num / 85);
+            }
+            return t;
+        },*/
+        textToNum: function (text) {
+            text = root.String(text);
+            if (util.stringLength(text) != 5) throw new root.errors.TypeError("text length must be 5");
+            var n = 0;
+            for (var i = 4; i >= 0; i--) {
+                if (i < 4) n *= 85;
+                n += util.charCodeAt(text, i) - 35;
+            }
+            return n;
+
+        },
+        /*
+        binToCompressedText: function (data) {
+            if (!(data instanceof root.ArrayBuffer) && (!root.SharedArrayBuffer || !(data instanceof root.SharedArrayBuffer))) {
+                if(!(data instanceof root.TypedArray)) throw root.errors.TypeError("Data needs to be an ArrayBuffer or TypedArray.");
+                data = util.typedArrayToBuffer(data);
+            }
+            var len = util.bufferLength(data);
+            var ints = ~~(len / 4);
+            var rem = len % 4;
+
+            var res = new root.Array(ints + 1);
+            res[0] = ''
+            var arr = new root.Uint32Array(root.sliceBuffer(data, 0, ints * 4));
+            for (var i = 0; i < ints; i++) {
+                res[i] = imports.numToText(arr[i]);
+            }
+            if (rem > 0) {
+                arr = new root.Uint8Array(root.sliceBufferStart(data, (ints * 4)));
+                var num = 0;
+                //endianess worker == endianess host
+                var narr = new root.ArrayBuffer(4);
+                var z = new root.Uint8Array(narr);
+                for (var i = 0; i < (4 - rem); i++) z[i] = arr[i];
+                var num = (new root.Uint32Array(narr))[0];
+                var mnum = 256 * rem;
+                while (num < mnum) num *= 256;
+                res[ints] = imports.numToText(num);
+            } else res[ints] = '';
+            return util.joinArray(res, '');
+        },*/
+        compressedTextToBin: function (cons, txt) {
+            txt = root.String(txt);
+            var len = util.stringLength(txt);
+            if (len % 5 != 0) throw new root.errors.TypeError("txt must be a multiple of 5");
+            var data = new cons((len / 5) * 4);
+            var arr = new root.Uint32Array(data);
+            for (var i = 0; i < (len / 5); i++) {
+                arr[i] = imports.textToNum(util.substring(txt, i * 5, (i + 1) * 5));
+            }
+            return data;
+        },
         valueToMessage: function (value) {
             var valueToMessage = imports.valueToMessage;
             var isStatic = value instanceof StaticType;
@@ -558,7 +684,6 @@
             var JSON = root.JSON;
             var Error = root.Error;
             var errors = root.errors;
-            var util = root.util;
             var undefined = root.undefined;
             var self = root.self;
             var Infinity = root.Infinity;
@@ -711,7 +836,7 @@
                     data.objs[index] = value;
                     return "Number(" + String(index) + "," + String(value) + ")";
                 }
-            } else if (value instanceof BigInt) {
+            } else if (BigInt && value instanceof BigInt) {
                 if (isStatic) {
                     var keys = util.keys(value);
                     var len = util.arrayLength(keys);
@@ -886,6 +1011,68 @@
                     data.objs[index] = value;
                     return "Error(" + JSON.stringify(typeName) + "," + JSON.stringify(String(value.name)) + "," + JSON.stringify(String(value.message)) + "," + JSON.stringify(String(value.stack)) + "," + String(index) + ")";
                 }
+            } else if (
+                root.Uint8Array &&
+                (
+                    (root.ArrayBuffer && value instanceof root.ArrayBuffer) ||
+                    value instanceof root.arrays.Uint8Array ||
+                    value instanceof root.arrays.Uint16Array ||
+                    value instanceof root.arrays.Uint32Array ||
+                    value instanceof root.arrays.Int8Array ||
+                    value instanceof root.arrays.Int16Array ||
+                    value instanceof root.arrays.Int32Array ||
+                    value instanceof root.arrays.Float32Array ||
+                    value instanceof root.arrays.Float64Array ||
+                    (root.arrays.BigUint64Array && value instanceof root.arrays.BigUint64Array) ||
+                    (root.SharedArrayBuffer && value instanceof root.SharedArrayBuffer)
+                )) {
+                var str;
+                var index = null;
+                var objkeys = util.keys(data.objs);
+                var objlen = util.arrayLength(objkeys);
+                for (var i = 0; i < objlen; i++) {
+                    var key = objkeys[i];
+                    if (data.objs[key] === value) {
+                        index = key;
+                        break;
+                    }
+                }
+                if(isStatic && !root.crossOriginIsolated && root.SharedArrayBuffer && value instanceof root.SharedArrayBuffer) {
+                    var len = utils.bufferLength(value);
+                    var v = new root.ArrayBuffer(len);
+                    var y = new root.Uint8Array(v);
+                    var z = new root.Uint8Array(value);
+                    for(var i = 0; len; i++) {
+                        y[i] = z[i];
+                    }
+                    if(index == null) index = data.count++;
+                    data.objs[index] = value;
+                    root.postMessage({index, value: v, buffer: true}); //always post because it is not synced (crossOriginIsolated == false and not posted as Shared)
+                    if(!isStatic) return "SharedBuffer(" + index + ")";
+                    str = 'SharedBuffer(' + index + ',{';
+                } else {
+                    //only post if a) is resolved and b) is not synced unless it is a new value. 
+                    //so a shared array buffer is not posted twice.
+                    if (isStatic && (index == null || !root.SharedArrayBuffer || !(value instanceof root.SharedArrayBuffer))) {
+                        if(index == null) index = data.count++;
+                        root.postMessage({index, value, buffer: true});
+                    }
+                    if(index == null) index = data.count++;
+                    data.objs[index] = value;
+                    if(!isStatic) return "Buffer(" + index + ")";
+                    str = 'Buffer(' + index + ',{';
+                }
+                var keys = util.keys(value);
+                var len = util.arrayLength(keys);
+                for (var i = 0; i < len; i++) {
+                    var key = keys[i];
+                    if (key == undefined) continue;
+                    var v = undefined;
+                    try { v = value[key]; } catch (ex) { }
+                    if (i > 0) str += ',';
+                    str += valueToMessage(key) + ':' + valueToMessage(deep ? new StaticType(v, true) : v);
+                }
+                return str + '})';
             } else if (value instanceof Set) {
                 if (isStatic) {
                     var keys = util.keys(value);
@@ -1013,7 +1200,7 @@
                 var r = function JailedFunction() {
                     return callFunctionAsyncInMain(arguments);
                 }
-                if(typeof value == 'object' && typeof value.name == 'string') {
+                if (typeof value == 'object' && typeof value.name == 'string') {
                     try {
                         util.defineProperty(r, "name", {
                             configurable: true,
@@ -1021,7 +1208,7 @@
                             writable: false,
                             value: value.name
                         });
-                    } catch(ex) {}
+                    } catch (ex) { }
                 }
                 util.defineProperty(r, "isJailAPI", {
                     configurable: true,
@@ -1055,7 +1242,7 @@
                     var arr = new root.Int32Array(data.sharedBuffer);
                     data.sharedValue = arr[0];
                     root.postMessage(str);
-                    
+
                     util.AtomicsWait(arr, 0, data.sharedValue);
                     data.sharedValue = arr[0];
                     var len = arr[1];
@@ -1066,7 +1253,7 @@
                     while (1) {
                         var rlen = left;
                         if (rlen > block) rlen = block;
-                        var r = util.sliceBuffer(new root.Uint8Array(data.sharedBuffer), 8, 8 + rlen);
+                        var r = new root.Uint8Array(util.sliceBuffer(data.sharedBuffer, 8, 8 + rlen));
                         for (var i = 0; i < rlen; i++) {
                             txt[i + read] = r[i];
                         }
@@ -1088,7 +1275,7 @@
                 var r = function JailedFunction() {
                     return callFunctionSyncInMain(arguments);
                 }
-                if(typeof value == 'object' && typeof value.name == 'string') {
+                if (typeof value == 'object' && typeof value.name == 'string') {
                     try {
                         util.defineProperty(r, "name", {
                             configurable: true,
@@ -1096,7 +1283,7 @@
                             writable: false,
                             value: value.name
                         });
-                    } catch(ex) {}
+                    } catch (ex) { }
                 }
                 util.defineProperty(r, "isJailAPI", {
                     configurable: true,
@@ -1201,7 +1388,7 @@
             apiEvents,
             registerRootListener,
             rootEventTarget,
-            postedObj: null,
+            postedObj: [],
             sharedBuffer: null,
             sharedValue: 0,
             symbol: function (x, y) {
@@ -1263,20 +1450,33 @@
                 return didall;
             },
             enableSynchronousAPI: function () {
-                if (SharedArrayBuffer == null || Atomics == null || root.TextDecoder == null) throw new TypeError("Synchronous API not supported in worker");
-                var obj = data.postedObj;
-                if (obj == null) throw new TypeError("No Shared buffer given.")
-                if (!(obj instanceof SharedArrayBuffer)) throw new TypeError("Must be a SharedArrayBuffer");
+                if (SharedArrayBuffer == null || Atomics == null || root.TextDecoder == null) throw new root.errors.TypeError("Synchronous API not supported in worker");
+                var obj = data.getLastObj();
+                if (obj == null) throw new root.errors.TypeError("No Shared buffer given.")
+                if (!(obj instanceof SharedArrayBuffer)) throw new root.errors.TypeError("Must be a SharedArrayBuffer");
                 data.sharedBuffer = obj;
-                data.postedObj = null;
+                return true;
             },
             disableSynchronousAPI: function () {
                 data.sharedBuffer = null;
+                return true;
             },
             postMessage: function (message) {
                 var ev = new Event('message');
                 ev.data = message;
                 return util.dispatchEvent(rootEventTarget, ev);
+            },
+            getLastObj: function() {
+                return util.pop(data.postedObj);
+            },
+            fromTypedArray: function(name, len, txt) {
+                var cls = root.arrays[name];
+                if(!cls) throw root.errors.TypeError("Unknown binary Array type " + cls);
+                var cons = root.ArrayBuffer;
+                if(name == "SharedArrayBuffer") cons = cls;
+                var arr = util.sliceBuffer(imports.compressedTextToBin(cons, txt), 0, len);
+                if(name != "SharedArrayBuffer" && name != "ArrayBuffer") arr = new cls(arr);
+                return arr;
             }
         };
         var snippets = data.snippets;
@@ -1343,7 +1543,11 @@
                     postMessage('Error(' + valueToMessage(ex) + ')');
                 }
             } else {
-                data.postedObj = e.data;
+                if(typeof e.data == 'object' && e.data.index && e.data.value) {
+                    data.objs[e.data.index] = e.data.value;
+                } else {
+                    util.push(data.postedObj, e.data);
+                }
             }
         });
 
