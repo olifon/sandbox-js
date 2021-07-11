@@ -1038,7 +1038,7 @@
                     }
                 }
                 if(isStatic && !root.crossOriginIsolated && root.SharedArrayBuffer && value instanceof root.SharedArrayBuffer) {
-                    var len = utils.bufferLength(value);
+                    var len = root.utils.bufferLength(value);
                     var v = new root.ArrayBuffer(len);
                     var y = new root.Uint8Array(v);
                     var z = new root.Uint8Array(value);
