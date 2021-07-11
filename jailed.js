@@ -1,4 +1,4 @@
-// sourceURL=Jailed Core
+//# sourceURL=JailedCore
 /*
     Do NOT bundle or compile this file. Those bundlers/compilers can modify the source code and possibly
     add ton of extra variables to the script (and the sandboxed code). Change your webpack config that jailed.js
@@ -13,6 +13,7 @@
  * outside this closure for the jailed code.
  */
 (function (global_eval) {
+    this.onmessage = null;
     var undefined = undefined;
     /**
      * The untrusted code may alter any important native function and value that are provided from the VM,

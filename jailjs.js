@@ -1599,7 +1599,8 @@ class JailPromise {
                     if (!terminated) {
                         if (typeof err != 'object' && err != undefined) err = new JailTerminatedError(err);
                         Object.defineProperty(me, 'is_terminated', { configurable: false, enumerable: true, writable: false, value: true });
-                        me[jail_eval].worker.terminate();
+                        if(me[jail_eval].worker) me[jail_eval].worker.terminate();
+                        try { if(me[jail_eval].xhr) me[jail_eval].xhr.abort(); } catch(ex) {}
                         var callbacks = me[jail_eval].value_callbacks;
                         me[jail_eval].err = err == undefined ? new JailTerminatedError("The jail is gracefully terminated, can't perform any actions.") : err;
                         if (err == undefined) err = me[jail_eval].err;
@@ -1619,12 +1620,191 @@ class JailPromise {
                 }
             });
 
-            var worker = new Worker(jailedPath);
+
+            var worker;
+            var cachedMsg = [];
+            var postBuff = null;
+            var xhr = new XMLHttpRequest();
+            xhr.onreadystatechange = () => {
+                if(xhr.readyState == 2 && xhr.status != 200) {
+                    me.forceTerminate(new Error("XHR for jailed JS failed."))
+                } else if(xhr.readyState == 4 && xhr.status == 200) {
+                    xhr.onreadystatechange = null;
+                    worker = new Worker("data:text/javascript," + encodeURIComponent("//# sourceURL=boot\nthis.onmessage=e=>(1,eval)(e.data);"));
+                    worker.postMessage(xhr.responseText);
+                    jaileval.worker = worker;
+                    for(var msg of cachedMsg) worker.postMessage(msg);
+                    cachedMsg = null;
+
+                    worker.addEventListener('message', function (e) {
+                        //debug
+                        //console.debug("< " + e.data);
+                        var message = e.data;
+                        if (message == 'next') {
+                            if (!jaileval.data_buffer || !postBuff) {
+                                var err = new Error("Something went wrong by returning a synchronous function.");
+                                me.forceTerminate(err);
+                                throw err;
+                            }
+                            var arr = new Int32Array(jaileval.data_buffer);
+                            arr[1] = postBuff.byteLength;
+                            var txt = new Uint8Array(jaileval.data_buffer);
+                            var block = jaileval.data_buffer.byteLength - 8;
+                            var cpy = postBuff.byteLength;
+                            if (cpy > block) cpy = block;
+                            for (var i = 0; i < cpy; i++) {
+                                txt[i + 8] = postBuff[i];
+                            }
+                            jaileval.buffer_state++;
+                            jaileval.buffer_state = jaileval.buffer_state % 1024;
+                            arr[0] = jaileval.buffer_state;
+                            Atomics.notify(arr, 0);
+                            if (postBuff.byteLength > block) postBuff = postBuff.slice(block);
+                            else postBuff = null;
+                            return;
+                        }
+                        if(typeof e.data == 'object' && e.data.index && e.data.value) {
+                            if(e.data.buffer) {
+                                resolvedBuffers.set(toJailObject(jaileval, e.data.index, jail_buffer), e.data.value);
+                            } else {
+                                jaileval.objs[e.data.index] = e.data.value;
+                            }
+                            return;
+                        }
+                        var reader = new Tokenizer(e.data);
+                        var func = reader.name();
+                        if (func == null) throw jail_error();
+                        func = func.toLowerCase();
+                        switch (func) {
+                            case 'return':
+                                if (!reader.startCall()) throw jail_error();
+                                if (value_callbacks.length < 1) return;
+                                jaileval.next_callback().resolve(toValue(jaileval, reader));
+                                break;
+                            case 'returnerror':
+                                if (!reader.startCall()) throw jail_error();
+                                if (value_callbacks.length < 1) return;
+                                jaileval.next_callback().reject(toValue(jaileval, reader));
+                                break;
+                            case 'error':
+                                if (!reader.startCall()) throw jail_error();
+                                throw toValue(jaileval, reader);
+                            case 'call':
+                                if (!reader.startCall()) throw jail_error();
+                                var index = reader.number();
+                                if (index == null) throw jail_error();
+                                if (!reader.next(',')) throw jail_error();
+                                var thisArg = toValue(jaileval, reader);
+                                var args = [];
+                                while (reader.next(',')) {
+                                    args.push(toValue(jaileval, reader));
+                                }
+                                if (!reader.end()) throw jail_error();
+                                if (index in jaileval.funcs) {
+                                    try {
+                                        if (thisArg[jail_index] == 0) thisArg = self; //root
+                                        var func = jaileval.funcs[index];
+                                        if (func instanceof JailSynchronousFunction) func = func.value;
+                                        var result = func.apply(thisArg, args);
+                                        worker.postMessage(">return " + fromValue(jaileval, result));
+                                    } catch (ex) {
+                                        worker.postMessage("<return " + fromValue(jaileval, ex));
+                                    }
+                                } else worker.postMessage("<return " + fromValue(jaileval, new ReferenceError("Jail function not found")));
+                                break;
+                            case 'callsync':
+                                if (!jaileval.data_buffer) {
+                                    var err = new Error("Worker called synchronous function while sharedArrayBuffer is not registered.");
+                                    me.forceTerminate(err);
+                                    throw err;
+                                }
+                                if (!reader.startCall()) throw jail_error();
+                                var index = reader.number();
+                                if (index == null) throw jail_error();
+                                if (!reader.next(',')) throw jail_error();
+                                var thisArg = toValue(jaileval, reader);
+                                var args = [];
+                                while (reader.next(',')) {
+                                    args.push(toValue(jaileval, reader));
+                                }
+                                if (!reader.end()) throw jail_error();
+                                var rstr = '';
+                                (async () => {
+                                    if (index in jaileval.funcs) {
+                                        try {
+                                            if (thisArg[jail_index] == 0) thisArg = self; //root
+                                            var func = jaileval.funcs[index];
+                                            var promise = false;
+                                            if (func instanceof JailSynchronousFunction) {
+                                                promise = func.promise;
+                                                func = func.value;
+                                            }
+                                            var result = func.apply(thisArg, args);
+                                            if (promise) result = await result;
+                                            rstr = 'return (' + fromValue(jaileval, result, true) + ');';
+                                        } catch (ex) {
+                                            rstr = 'throw (' + fromValue(jaileval, ex, true) + ');';
+                                        }
+                                    } else rstr = 'throw new this.root.ReferenceError("Jail Function not found");'
+                                    postBuff = (new TextEncoder('utf-8')).encode(rstr);
+                                    var arr = new Int32Array(jaileval.data_buffer);
+                                    arr[1] = postBuff.byteLength;
+                                    var txt = new Uint8Array(jaileval.data_buffer);
+                                    var block = jaileval.data_buffer.byteLength - 8;
+                                    var cpy = postBuff.byteLength;
+                                    if (cpy > block) cpy = block;
+                                    for (var i = 0; i < cpy; i++) {
+                                        txt[i + 8] = postBuff[i];
+                                    }
+                                    jaileval.buffer_state++;
+                                    jaileval.buffer_state = jaileval.buffer_state % 1024;
+                                    arr[0] = jaileval.buffer_state;
+                                    Atomics.notify(arr, 0);
+                                    if (postBuff.length > block) postBuff = postBuff.slice(block);
+                                    else postBuff = null;
+                                })();
+                                break;
+                            case 'registerpromise':
+                                if (!reader.startCall()) throw jail_error();
+                                var index = reader.number();
+                                if (index == null) throw jail_error();
+                                if (!reader.next(',')) throw jail_error();
+                                var resolve_index = reader.number();
+                                if (resolve_index == null) throw jail_error();
+                                if (!reader.next(',')) throw jail_error();
+                                var reject_index = reader.number();
+                                if (reject_index == null) throw jail_error();
+                                var prom = jaileval.promises[index];
+                                if (prom == undefined) return;
+                                prom.value.then(
+                                    function (r) {
+                                        jaileval("this.objs[" + String(resolve_index) + "](" + fromValue(jaileval, r) + ");");
+                                    },
+                                    function (r) {
+                                        jaileval("this.objs[" + String(reject_index) + "](" + fromValue(jaileval, r) + ");");
+                                    });
+                                break;
+                            case 'message':
+                                if (!reader.startCall()) throw jail_error();
+                                var message = toValue(jaileval, reader);
+                                for (var listener of jaileval.message_listeners) {
+                                    listener(message);
+                                }
+                                break;
+        
+                        }
+                    });
+                }
+            }
+            xhr.open('GET', jailedPath);
+            xhr.send();
+
             function jaileval(str) {
                 if ('err' in jaileval) return Promise.reject(jaileval.err);
                 if (jaileval.control.is_terminated) return Promise.reject(new Error('The jail was terminated'))
                 return new Promise(function (resolve, reject) {
-                    worker.postMessage(str);
+                    if(worker) worker.postMessage(str);
+                    else cachedMsg.push(str);
                     value_callbacks.push({ resolve: resolve, reject: reject });
                 });
             }
@@ -1643,6 +1823,7 @@ class JailPromise {
             jaileval.promises = {};
             jaileval.objscount = 1; //skip 0, that is root
             jaileval.worker = worker;
+            jaileval.xhr = xhr;
             jaileval.control = this;
             jaileval.terminate = do_terminate;
             jaileval.onTerminate = on_terminate;
@@ -1661,166 +1842,6 @@ class JailPromise {
                 }
                 return jaileval.value_callbacks.shift();
             };
-
-            var postBuff = null;
-            worker.addEventListener('message', function (e) {
-                //debug
-                //console.debug("< " + e.data);
-                var message = e.data;
-                if (message == 'next') {
-                    if (!jaileval.data_buffer || !postBuff) {
-                        var err = new Error("Something went wrong by returning a synchronous function.");
-                        me.forceTerminate(err);
-                        throw err;
-                    }
-                    var arr = new Int32Array(jaileval.data_buffer);
-                    arr[1] = postBuff.byteLength;
-                    var txt = new Uint8Array(jaileval.data_buffer);
-                    var block = jaileval.data_buffer.byteLength - 8;
-                    var cpy = postBuff.byteLength;
-                    if (cpy > block) cpy = block;
-                    for (var i = 0; i < cpy; i++) {
-                        txt[i + 8] = postBuff[i];
-                    }
-                    jaileval.buffer_state++;
-                    jaileval.buffer_state = jaileval.buffer_state % 1024;
-                    arr[0] = jaileval.buffer_state;
-                    Atomics.notify(arr, 0);
-                    if (postBuff.byteLength > block) postBuff = postBuff.slice(block);
-                    else postBuff = null;
-                    return;
-                }
-                if(typeof e.data == 'object' && e.data.index && e.data.value) {
-                    if(e.data.buffer) {
-                        resolvedBuffers.set(toJailObject(jaileval, e.data.index, jail_buffer), e.data.value);
-                    } else {
-                        jaileval.objs[e.data.index] = e.data.value;
-                    }
-                    return;
-                }
-                var reader = new Tokenizer(e.data);
-                var func = reader.name();
-                if (func == null) throw jail_error();
-                func = func.toLowerCase();
-                switch (func) {
-                    case 'return':
-                        if (!reader.startCall()) throw jail_error();
-                        if (value_callbacks.length < 1) return;
-                        jaileval.next_callback().resolve(toValue(jaileval, reader));
-                        break;
-                    case 'returnerror':
-                        if (!reader.startCall()) throw jail_error();
-                        if (value_callbacks.length < 1) return;
-                        jaileval.next_callback().reject(toValue(jaileval, reader));
-                        break;
-                    case 'error':
-                        if (!reader.startCall()) throw jail_error();
-                        throw toValue(jaileval, reader);
-                    case 'call':
-                        if (!reader.startCall()) throw jail_error();
-                        var index = reader.number();
-                        if (index == null) throw jail_error();
-                        if (!reader.next(',')) throw jail_error();
-                        var thisArg = toValue(jaileval, reader);
-                        var args = [];
-                        while (reader.next(',')) {
-                            args.push(toValue(jaileval, reader));
-                        }
-                        if (!reader.end()) throw jail_error();
-                        if (index in jaileval.funcs) {
-                            try {
-                                if (thisArg[jail_index] == 0) thisArg = self; //root
-                                var func = jaileval.funcs[index];
-                                if (func instanceof JailSynchronousFunction) func = func.value;
-                                var result = func.apply(thisArg, args);
-                                worker.postMessage(">return " + fromValue(jaileval, result));
-                            } catch (ex) {
-                                worker.postMessage("<return " + fromValue(jaileval, ex));
-                            }
-                        } else worker.postMessage("<return " + fromValue(jaileval, new ReferenceError("Jail function not found")));
-                        break;
-                    case 'callsync':
-                        if (!jaileval.data_buffer) {
-                            var err = new Error("Worker called synchronous function while sharedArrayBuffer is not registered.");
-                            me.forceTerminate(err);
-                            throw err;
-                        }
-                        if (!reader.startCall()) throw jail_error();
-                        var index = reader.number();
-                        if (index == null) throw jail_error();
-                        if (!reader.next(',')) throw jail_error();
-                        var thisArg = toValue(jaileval, reader);
-                        var args = [];
-                        while (reader.next(',')) {
-                            args.push(toValue(jaileval, reader));
-                        }
-                        if (!reader.end()) throw jail_error();
-                        var rstr = '';
-                        (async () => {
-                            if (index in jaileval.funcs) {
-                                try {
-                                    if (thisArg[jail_index] == 0) thisArg = self; //root
-                                    var func = jaileval.funcs[index];
-                                    var promise = false;
-                                    if (func instanceof JailSynchronousFunction) {
-                                        promise = func.promise;
-                                        func = func.value;
-                                    }
-                                    var result = func.apply(thisArg, args);
-                                    if (promise) result = await result;
-                                    rstr = 'return (' + fromValue(jaileval, result, true) + ');';
-                                } catch (ex) {
-                                    rstr = 'throw (' + fromValue(jaileval, ex, true) + ');';
-                                }
-                            } else rstr = 'throw new this.root.ReferenceError("Jail Function not found");'
-                            postBuff = (new TextEncoder('utf-8')).encode(rstr);
-                            var arr = new Int32Array(jaileval.data_buffer);
-                            arr[1] = postBuff.byteLength;
-                            var txt = new Uint8Array(jaileval.data_buffer);
-                            var block = jaileval.data_buffer.byteLength - 8;
-                            var cpy = postBuff.byteLength;
-                            if (cpy > block) cpy = block;
-                            for (var i = 0; i < cpy; i++) {
-                                txt[i + 8] = postBuff[i];
-                            }
-                            jaileval.buffer_state++;
-                            jaileval.buffer_state = jaileval.buffer_state % 1024;
-                            arr[0] = jaileval.buffer_state;
-                            Atomics.notify(arr, 0);
-                            if (postBuff.length > block) postBuff = postBuff.slice(block);
-                            else postBuff = null;
-                        })();
-                        break;
-                    case 'registerpromise':
-                        if (!reader.startCall()) throw jail_error();
-                        var index = reader.number();
-                        if (index == null) throw jail_error();
-                        if (!reader.next(',')) throw jail_error();
-                        var resolve_index = reader.number();
-                        if (resolve_index == null) throw jail_error();
-                        if (!reader.next(',')) throw jail_error();
-                        var reject_index = reader.number();
-                        if (reject_index == null) throw jail_error();
-                        var prom = jaileval.promises[index];
-                        if (prom == undefined) return;
-                        prom.value.then(
-                            function (r) {
-                                jaileval("this.objs[" + String(resolve_index) + "](" + fromValue(jaileval, r) + ");");
-                            },
-                            function (r) {
-                                jaileval("this.objs[" + String(reject_index) + "](" + fromValue(jaileval, r) + ");");
-                            });
-                        break;
-                    case 'message':
-                        if (!reader.startCall()) throw jail_error();
-                        var message = toValue(jaileval, reader);
-                        for (var listener of jaileval.message_listeners) {
-                            listener(message);
-                        }
-                        break;
-
-                }
-            });
 
             Object.defineProperty(this, 'root', { configurable: false, enumerable: true, writable: false, value: toJailObject(jaileval, 0, null) });
             Object.defineProperty(this, 'apis', { configurable: false, enumerable: true, writable: false, value: toJailObject(jaileval, 1, null) });
@@ -2189,7 +2210,7 @@ class JailPromise {
         enableSynchronousAPI(buffer_size) {
             if (!self.Atomics || !self.SharedArrayBuffer || !self.Uint8Array || !self.TextEncoder) return Promise.reject(new Error("Atomics not supported on this browser"));
             //onReady is used so that if NOW a synchronous function is running, it will not be disrupted (race condition)
-            return this.onReady().then(() => {
+            return this.ping().then(() => this.onReady()).then(() => {
                 try {
                     if (!buffer_size) buffer_size = 65536;
                     buffer_size = Number(buffer_size);
@@ -2207,7 +2228,7 @@ class JailPromise {
          * Disable synchronous API on the jail
          */
         disableSynchronousAPI() {
-            return this.onReady().then(() => this[jail_eval]("return this.disableSynchronousAPI();").then(() => this[jail_eval].data_buffer = null));
+            return this.ping().then(() => this.onReady()).then(() => this[jail_eval]("return this.disableSynchronousAPI();").then(() => this[jail_eval].data_buffer = null));
         }
 
         /**
