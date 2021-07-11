@@ -1660,15 +1660,22 @@ class JailPromise {
             Object.defineProperty(this, 'apiEvents', { configurable: false, enumerable: true, writable: false, value: toJailObject(jaileval, 2, null) });
             Object.defineProperty(this, jail_eval, { configurable: false, enumerable: false, writable: false, value: jaileval });
             Object.defineProperty(this, 'is_terminated', { configurable: true, enumerable: true, writable: true, value: false });
+            /**
+             * The default name for a script
+             */
+            this.defaultScriptName = "sandboxed";
             Object.seal(this);
         }
 
         /**
          * Execute a script and return the return value from it.
          * @param {string} src the script to execute
+         * @param {string} name the name of the script (optional)
          */
-        execute(src) {
-            return this[jail_eval]('"eval";' + String(src));
+        execute(src, name) {
+            if(!name) name = this.defaultScriptName;
+            if(!name) name = 'sandboxed';
+            return this[jail_eval]('"eval";//# sourceURL=' + name + '\n' + String(src).replace(/\/\/#\s.+$/gm, ''));
         }
 
 
@@ -1676,8 +1683,10 @@ class JailPromise {
          * Execute a script and return the return value from it as a resolved value.
          * @param {string} src the script to execute
          */
-        executeAsResolved(src) {
-            return this[jail_eval]('"eval_static";' + String(src));
+        executeAsResolved(src, name) {
+            if(!name) name = this.defaultScriptName;
+            if(!name) name = 'sandboxed';
+            return this[jail_eval]('"eval_static";//# sourceURL=' + name + '\n' + String(src).replace(/\/\/#\s.+$/gm, ''));
         }
 
         /**
@@ -1685,7 +1694,9 @@ class JailPromise {
          * @param {string} src the script to execute
          */
         executeAsFunction(src) {
-            return this[jail_eval]('"function";' + String(src));
+            if(!name) name = this.defaultScriptName;
+            if(!name) name = 'sandboxed';
+            return this[jail_eval]('"function";//# sourceURL=' + name + '\n' + String(src).replace(/\/\/#\s.+$/gm, ''));
         }
 
         /**
@@ -1693,7 +1704,9 @@ class JailPromise {
          * @param {string} src the script to execute
          */
         executeAsAsyncFunction(src) {
-            return this[jail_eval]('"async_function";' + String(src));
+            if(!name) name = this.defaultScriptName;
+            if(!name) name = 'sandboxed';
+            return this[jail_eval]('"async_function";//# sourceURL=' + name + '\n' + String(src).replace(/\/\/#\s.+$/gm, ''));
         }
 
         /**
@@ -1701,7 +1714,9 @@ class JailPromise {
          * @param {string} src the script to execute
          */
         executeAsGeneratorFunction(src) {
-            return this[jail_eval]('"generator_function";' + String(src));
+            if(!name) name = this.defaultScriptName;
+            if(!name) name = 'sandboxed';
+            return this[jail_eval]('"generator_function";//# sourceURL=' + name + '\n' + String(src).replace(/\/\/#\s.+$/gm, ''));
         }
 
         /**

@@ -1,4 +1,4 @@
-/*# sourceMappingURL=Jailed Core */
+// sourceURL=Jailed Core
 /*
     Do NOT bundle or compile this file. Those bundlers/compilers can modify the source code and possibly
     add ton of extra variables to the script (and the sandboxed code). Change your webpack config that jailed.js
@@ -83,6 +83,7 @@
         var _s_toString = String.prototype.toString;
         var _n_toString = Number.prototype.toString;
         var _b_toString = Boolean.prototype.toString;
+        var _replace_string = String.prototype.replace;
         var _push = Array.prototype.push;
         var _pop = Array.prototype.pop;
         var _concat = Array.prototype.concat;
@@ -320,6 +321,9 @@
                 },
                 sliceBuffer(data, start, end) {
                     return apply(_buffer_slice, [data, start, end]);
+                },
+                replaceString(str, from, to) {
+                    return apply(_replace_string, [str, from, to]);
                 },
                 keys: bind(Object.keys, Object),
                 defineProperty: bind(Object.defineProperty, Object),
