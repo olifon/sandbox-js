@@ -244,8 +244,8 @@ Primitives:
 * bigint
 * symbol
 
-All objects comming from the sandbox will return a JailObject (if not resolved), including Functions, Proxy etc
-Some objects can be resolved to an Object for the main code:
+All objects comming from the sandbox will return a JailObject (if not resolved), including Functions, Proxy etc.
+Some objects can be resolved to an equivalent object for the main code:
 
 Resolved objects:
 * Number
@@ -268,6 +268,14 @@ Resolved objects:
  * Resolved promises returned from the SANDBOX will always resolve in a JailPromise (a wrapper for a Promise).
  * This prevents chaining with the returned Promises from the API functions. 
  * You can get the original promise with the .value on JailPromise)
+
+On all resolved objects, the enumerable properties of that object are also copied to the main object.
+So if you have a String object with a property foo set, it is also copied to the main object.
+Do not call functions on objects returned from the sandbox. For most objects you can remove those properties:
+* String: String(strobj)
+* Number: Number(numobj)
+* Set: [...set]
+Properties indentified by a Symbol are not copied.
 
 You can also manipulate objects with the API:
 
