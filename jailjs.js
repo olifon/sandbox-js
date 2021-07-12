@@ -1910,6 +1910,7 @@ this.jailFunc = (function (newThread, jailFunc, jailCode, subId) {
             Object.defineProperty(this, "isThread", { configurable: false, writable: false, value: !!newThread || isChild });
             Object.defineProperty(this, "isParentChild", { configurable: false, writable: false, value: isChild });
             Object.defineProperty(this, "parent", { configurable: false, writable: false, value: parent });
+            this.threadLimit = 4;
             /**
              * The default name for a script
              */
@@ -2123,16 +2124,21 @@ this.jailFunc = (function (newThread, jailFunc, jailCode, subId) {
          * isParentChild: returns true or false, if the parent of this thread is an CHILD of this thread
          * parent: returns the parent of this thread or null if it cannot be accessed
          *         it can only be accessed if isParentChild is true.
+         * 
+         * @param {number} threadLimit Max amount of threads that this sandbox can create.
+         *                             (default 4, is set to this.threadLimit)
          */
-        async enableThreads() {
+        async enableThreads(threadLimit) {
             if(this[jail_eval].isChild) throw new TypeError("You cannot enable threads on children/threads sandbox from the MAIN code. You need to run enableThreads() on the parent thead. ");
             if(this[jail_eval].threadsEnabled) throw new TypeError("Threads are already enabled");
             if(!this[jail_eval].jailedCode) {
                 this[jail_eval].jailedCode = '(' + await this[jail_eval]("return this.jailedCode") + ')();';
                 jailCode = this[jail_eval].jailedCode;
             }
+            if(threadLimit != null) this.threadLimit = threadLimit;
             var id = subId + "." + subIndex++;
             async function createThread() {
+                if(this.threadLimit && this[jail_eval].children.length >= this.threadLimit) throw new Error("Thread limit reached");
                 //this will point to a parent JailJS
                 var child = new JailJS(wrapper_secret, this);
                 child.onTerminate().catch(() => {}); //do not report uncaught promises
