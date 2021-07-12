@@ -810,7 +810,7 @@ this.jailFunc = (function (newThread, jailFunc, jailCode, subId) {
             for (var i = 0; i < objslen; i++) {
                 var key = objskeys[i];
                 if (key == undefined) continue;
-                if (jaileval.funcs[key] === value) index = value;
+                if (jaileval.funcs[key] === value) index = key;
             }
             if (index == null) index = -(jaileval.objscount++);
             jaileval.funcs[index] = value;
