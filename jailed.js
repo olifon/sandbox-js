@@ -610,7 +610,6 @@ this.jailFunc = (function () {
 
 
 
-        var addMessageListener;
         var data;
         var util = root.util;
         var imports = {
@@ -1196,7 +1195,8 @@ this.jailFunc = (function () {
                 if (index in data.objs && type != 'error') return data.objs[index];
                 if (type == 'function') {
                     var callFunctionAsyncInMain = function (a) {
-                        var str = 'Call(' + index + ',' + valueToMessage(this);
+                        var findex = data.functionReturnIndex++;
+                        var str = 'Call(' + index + ',' + findex + ',' + valueToMessage(this);
                         var args = util.toArray(a);
                         for (var i = 0; i < util.arrayLength(args); i++) {
                             str += ',' + valueToMessage(args[i]);
@@ -1204,10 +1204,7 @@ this.jailFunc = (function () {
                         str += ')';
                         root.postMessage(str);
                         return new Promise(function (resolve, reject) {
-                            addMessageListener(function (r, s) {
-                                if (s) resolve(r);
-                                else reject(r);
-                            });
+                            data.functionReturns[findex] = {resolve, reject};
                         });
                     };
                     //we do this so that the code from (callFunctionInMain) is not exposed by toString
@@ -1383,9 +1380,6 @@ this.jailFunc = (function () {
             var undefined = root.undefined;
             var self = root.self;
 
-            /* Local imports */
-            var stack = [];
-
             /* Root for the code from the messages */
             data = {
                 self: self,
@@ -1406,6 +1400,8 @@ this.jailFunc = (function () {
                 postedObj: [],
                 sharedBuffer: null,
                 sharedValue: 0,
+                functionReturns: {},
+                functionReturnIndex: 0,
                 symbol: function (x, y) {
                     if (x in data.objs) return data.objs[x];
                     else {
@@ -1496,9 +1492,6 @@ this.jailFunc = (function () {
             };
             var snippets = data.snippets;
             var valueToMessage = imports.valueToMessage;
-            addMessageListener = function (f) {
-                util.push(stack, f);
-            };
 
             var postDesc = Object.getOwnPropertyDescriptor(self, "postMessage");
             if (postDesc == null || postDesc.configurable) {
@@ -1528,13 +1521,16 @@ this.jailFunc = (function () {
                  */
                 if (typeof e.data == 'string' || e.data instanceof StringType) {
                     var code = util.trim(String(e.data));
-                    var stackLength = util.arrayLength(stack);
-                    if (stackLength > 0 && util.startsWith(code, ">")) {
-                        util.pop(stack)(apply(new Function(code.substring(1)), [data, true]), true);
+                    if (util.startsWith(code, ">")) {
+                        var ret = apply(new Function(code.substring(1)), [data, true]);
+                        data.functionReturns[ret[0]].resolve(ret[1]);
+                        delete data.functionReturns[ret[0]];
                         return;
                     }
-                    if (stackLength > 0 && util.startsWith(code, "<")) {
-                        util.pop(stack)(apply(new Function(code.substring(1)), [data, false]), false);
+                    if (util.startsWith(code, "<")) {
+                        var ret = apply(new Function(code.substring(1)), [data, false]);
+                        data.functionReturns[ret[0]].reject(ret[1]);
+                        delete data.functionReturns[ret[0]];
                         return;
                     }
                     try {

@@ -1592,6 +1592,7 @@ this.jailFunc = (function (newThread, jailFunc, jailCode, subId) {
     var cachedWorkerCode = null;
     var xhr = null;
     var xhrResolvers = [];
+    var jails = [];
 
     self.JailJS = class {
         /**
@@ -1613,6 +1614,12 @@ this.jailFunc = (function (newThread, jailFunc, jailCode, subId) {
                 var terminated = false;
                 do_terminate = function (err) {
                     if (!terminated) {
+                        var ind = jails.indexOf(me);
+                        if(ind >= 0) jails.splice(ind, 1);
+                        //also terminate ALL the children
+                        for(var child of jaileval.children) {
+                            child[jail_eval].terminate();
+                        }
                         if (typeof err != 'object' && err != undefined) err = new JailTerminatedError(err);
                         Object.defineProperty(me, 'is_terminated', { configurable: false, enumerable: true, writable: false, value: true });
                         if (me[jail_eval].worker) me[jail_eval].worker.terminate();
@@ -1715,6 +1722,9 @@ this.jailFunc = (function (newThread, jailFunc, jailCode, subId) {
                             var index = reader.number();
                             if (index == null) throw jail_error();
                             if (!reader.next(',')) throw jail_error();
+                            var call_index = reader.number();
+                            if(call_index == null) throw jail_error();
+                            if (!reader.next(',')) throw jail_error();
                             var thisArg = toValue(jaileval, reader);
                             var args = [];
                             while (reader.next(',')) {
@@ -1727,11 +1737,11 @@ this.jailFunc = (function (newThread, jailFunc, jailCode, subId) {
                                     var func = jaileval.funcs[index];
                                     if (func instanceof JailSynchronousFunction) func = func.value;
                                     var result = func.apply(thisArg, args);
-                                    worker.postMessage(">return " + fromValue(jaileval, result));
+                                    worker.postMessage(">return [" + String(call_index) + ",(" + fromValue(jaileval, result) + ")];");
                                 } catch (ex) {
-                                    worker.postMessage("<return " + fromValue(jaileval, ex));
+                                    worker.postMessage("<return [" + String(call_index) + ",(" + fromValue(jaileval, ex) + ")];");
                                 }
-                            } else worker.postMessage("<return " + fromValue(jaileval, new ReferenceError("Jail function not found")));
+                            } else worker.postMessage("<return [" + String(call_index) + ",(" + fromValue(jaileval, new ReferenceError("Jail function not found")) + ")];");
                             break;
                         case 'callsync':
                             if (!jaileval.data_buffer) {
@@ -1905,6 +1915,7 @@ this.jailFunc = (function (newThread, jailFunc, jailCode, subId) {
              */
             this.defaultScriptName = "sandboxed";
             Object.seal(this);
+            if(!isChild) jails.push(this);
         }
 
         /**
@@ -2029,9 +2040,9 @@ this.jailFunc = (function (newThread, jailFunc, jailCode, subId) {
                 //prevent any new tasks
                 var ping = me.ping();
                 jaileval.err = err == undefined ? new JailTerminatedError("The jail is waiting for termination. Can't perform any new actions.") : err;
-                ping.then(function (response) {
+                ping.then(function () {
                     jaileval.waiting = true;
-                    me.onReady().then(function (response) {
+                    Promise.all(me.getChildren().map(x => x.terminate(null, err).catch(() => {}))).then(() => me.onReady()).then(function (response) {
                         if (id != null) clearTimeout(id);
                         //update err
                         err = err == undefined ? new JailTerminatedError("The jail is terminated (soft), Can't perform any new actions.") : err;
@@ -2124,6 +2135,7 @@ this.jailFunc = (function (newThread, jailFunc, jailCode, subId) {
             async function createThread() {
                 //this will point to a parent JailJS
                 var child = new JailJS(wrapper_secret, this);
+                child.onTerminate().catch(() => {}); //do not report uncaught promises
                 this[jail_eval].children.push(child);
                 child.onTerminate().then(() => {
                     var ind = this[jail_eval].children.indexOf(child);
@@ -2550,6 +2562,7 @@ this.jailFunc = (function (newThread, jailFunc, jailCode, subId) {
         }
         return result;
     }
+    self.JailJS.getJails = () => [...jails];
     Object.defineProperty(self.JailJS, "isThread", {value: !!newThread, writable: false, configurable: false});
 });
 this.jailFunc(null, null, null, "");
