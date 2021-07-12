@@ -36,7 +36,7 @@ jail.terminate();
 })();
 ```
 
-**NOTE**: Do not whitelist objects like XMLHttpRequest for untrusted code. The Worker runs with the same origin as the website. This means it can access all the cookies, storages (like indexed db) etc. All of this is disabled by default of course and only vanilla JS objects are exposed. Try to create own API functions, that validates data, and expose them to the sandbox with root.set.
+**NOTE**: Do not whitelist objects like XMLHttpRequest for untrusted code. It is a better idea to make your own API functions, that checks the data from the sandbox, and expose those APIs as functions.
 
 Example of a malicious program:
 ```Javascript
