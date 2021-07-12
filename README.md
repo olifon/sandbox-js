@@ -10,6 +10,8 @@ You need to add both 'jailjs.js' and 'jailed.js' to your project, but only inclu
 
 Sandbox demo: https://olifon.github.io/sandbox-js/terminal.html
 
+![Screenshot demo](screenshot-demo.png)
+
 termlib.js, test.js, test.html and terminal.html are used for the DEMO (not part of the library). You only need jailed.js and jailjs.js, just copy paste them in your project.
 
 
