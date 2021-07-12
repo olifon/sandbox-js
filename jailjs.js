@@ -8,83 +8,89 @@
     instead it safely parses the messages (with a special syntax) with its own parser.
     This is not the case for data comming from the main thread (but it is allowed to execute code in the worker).
 */
-class JailError extends Error {
-    constructor(innerError, message, obj) {
-        super(message == null ? innerError : message);
-        this.cause = message == null ? null : innerError;
-        this.obj = obj == null ? null : obj; //undefined == null, will contain a copied object or a JailObject. May be modified
+this.jailFunc = (function (newThread, jailFunc, jailCode, subId) {
+    var subIndex = 0;
+    if(!jailFunc) {
+        var jailFunc = this.jailFunc.toString();
+        delete this.jailFunc;
+    }
+    this.JailError = class extends Error {
+        constructor(innerError, message, obj) {
+            super(message == null ? innerError : message);
+            this.cause = message == null ? null : innerError;
+            this.obj = obj == null ? null : obj; //undefined == null, will contain a copied object or a JailObject. May be modified
+        }
+    
+        toString() {
+            var str = super.stack || super.toString();
+            if (this.cause != null) str += '\r\n' + this.cause.toString();
+            return str;
+        }
+    
+        get jailObj() {
+            if (!this.obj) return null;
+            if (this.obj instanceof JailObject) return this.obj;
+            return null;
+        }
+    
+        resolve(deep) {
+            if (!this.obj) return Promise.reject(new Error("Does not have a sub error"));
+            if (this.obj instanceof JailObject) return this.obj.resolve(deep);
+            return Promise.resolve(this.obj);
+        }
+    }
+    this.JailTerminatedError = class extends JailError {
+        constructor(message) {
+            super(null, message);
+        }
+    }
+    this.JailSynchronousFunction = class {
+        constructor(func, promise) {
+            if (!(func instanceof Function)) throw new Error("Func argument needs to be a function");
+            this.value = func;
+            this.promise = !!promise;
+            Object.freeze(this);
+        }
+    }
+    /*
+      This class wraps promises from the Jailed environment.
+      It is needed because you cannot let a promise return an another promise (without chaining).
+    
+      For example: Promise.resolve(Promise.resvolve("Hello")) will resolve to "Hello" and not a Promise.
+      This is because of how the chaining in Promises works.
+      To prevent chaining of the promises that jailed functions returns with the promises from the API, a wrapper is used.
+    */
+    this.JailPromise = class {
+        constructor(promise) {
+            //We must prevent an uncaught error in the main if the jailed environment returned a promise
+            if (promise instanceof JailPromise) promise = promise.value;
+            if (!(promise instanceof Promise)) throw new TypeError('The promise argument needs to be a Promise');
+            Object.defineProperty(this, 'value', { enumerable: true, configurable: false, writable: false, value: promise });
+            var success = false;
+            var error = false;
+            Object.defineProperty(this, "success", { get: () => success, set: () => success, configurable: false });
+            Object.defineProperty(this, "error", { get: () => error, set: () => error, configurable: false });
+            promise.then(() => success = true, () => error = true);
+        }
+    
+        //we may NOT add a THEN function, because then JS will see our object as a promise-like object and will chain it.
+        finish(...args) {
+            return this.value.then(...args);
+        }
+    
+        except(...args) {
+            return this.value.catch(...args);
+        }
+    
+        finally(...args) {
+            return this.value.finally(...args);
+        }
+    
+        toString() {
+            return JailJS.variableToString(this);
+        }
     }
 
-    toString() {
-        var str = super.stack || super.toString();
-        if (this.cause != null) str += '\r\n' + this.cause.toString();
-        return str;
-    }
-
-    get jailObj() {
-        if (!this.obj) return null;
-        if (this.obj instanceof JailObject) return this.obj;
-        return null;
-    }
-
-    resolve(deep) {
-        if (!this.obj) return Promise.reject(new Error("Does not have a sub error"));
-        if (this.obj instanceof JailObject) return this.obj.resolve(deep);
-        return Promise.resolve(this.obj);
-    }
-}
-class JailTerminatedError extends JailError {
-    constructor(message) {
-        super(null, message);
-    }
-}
-class JailSynchronousFunction {
-    constructor(func, promise) {
-        if (!(func instanceof Function)) throw new Error("Func argument needs to be a function");
-        this.value = func;
-        this.promise = !!promise;
-        Object.freeze(this);
-    }
-}
-/*
-  This class wraps promises from the Jailed environment.
-  It is needed because you cannot let a promise return an another promise (without chaining).
-
-  For example: Promise.resolve(Promise.resvolve("Hello")) will resolve to "Hello" and not a Promise.
-  This is because of how the chaining in Promises works.
-  To prevent chaining of the promises that jailed functions returns with the promises from the API, a wrapper is used.
-*/
-class JailPromise {
-    constructor(promise) {
-        //We must prevent an uncaught error in the main if the jailed environment returned a promise
-        if (promise instanceof JailPromise) promise = promise.value;
-        if (!(promise instanceof Promise)) throw new TypeError('The promise argument needs to be a Promise');
-        Object.defineProperty(this, 'value', { enumerable: true, configurable: false, writable: false, value: promise });
-        var success = false;
-        var error = false;
-        Object.defineProperty(this, "success", { get: () => success, set: () => success, configurable: false });
-        Object.defineProperty(this, "error", { get: () => error, set: () => error, configurable: false });
-        promise.then(() => success = true, () => error = true);
-    }
-
-    //we may NOT add a THEN function, because then JS will see our object as a promise-like object and will chain it.
-    finish(...args) {
-        return this.value.then(...args);
-    }
-
-    except(...args) {
-        return this.value.catch(...args);
-    }
-
-    finally(...args) {
-        return this.value.finally(...args);
-    }
-
-    toString() {
-        return JailJS.variableToString(this);
-    }
-}
-(function () {
     /**
      * Specify here the path of the 'jailed.js'
      */
@@ -1513,7 +1519,7 @@ class JailPromise {
                     if (func instanceof JailSynchronousFunction) func = func.value;
                     ret = function () {
                         try {
-                            var result = func.apply(this, Array.prototype.slice.call(arguments));
+                            var result = func.apply(null, Array.prototype.slice.call(arguments));
                             if (result instanceof Promise) result = new JailPromise(result);
                             return Promise.resolve(result);
                         } catch (ex) {
@@ -1523,7 +1529,8 @@ class JailPromise {
                     };
                 } else {
                     ret = function () {
-                        return me.invoke('', this, Array.prototype.slice.call(arguments));
+                        //we will NOT expose our this
+                        return me.invoke('', jaileval.control.root, Array.prototype.slice.call(arguments));
                     };
                 }
                 ret.wrapper = this;
@@ -1593,7 +1600,11 @@ class JailPromise {
          * 
          * You can get the global of the jailed environment with .root
          */
-        constructor() {
+        constructor(secret, parent) {
+            var isChild = false;
+            if(secret === wrapper_secret) isChild = true;
+            parent = (isChild ? parent : null);
+            if(!parent) isChild = false;
 
             var value_callbacks = [];
             var do_terminate;
@@ -1629,17 +1640,27 @@ class JailPromise {
             var postBuff = null;
 
             function gotWorkerCode() {
-                //this 'boot' script of the worker will receive one message (the jailed.js) code and evals that.
-                worker = new Worker("data:text/javascript," + encodeURIComponent("//# sourceURL=boot\nthis.onmessage=e=>(1,eval)(e.data);"));
-                worker.postMessage(cachedWorkerCode);
+                var asWebWorker = false;
+                if(!worker) {
+                    asWebWorker = true;
+                    //this 'boot' script of the worker will receive one message (the jailed.js) code and evals that.
+                    worker = new Worker("data:text/javascript," + encodeURIComponent("//# sourceURL=boot\nthis.onmessage=e=>(1,eval)(e.data);"));
+                    worker.postMessage(cachedWorkerCode);
+                }
                 jaileval.worker = worker;
                 for (var msg of cachedMsg) worker.postMessage(msg);
                 cachedMsg = null;
+                if(asWebWorker) {
+                    var messageListener = null;
+                    worker.setMessageListener = function(listener) {
+                        messageListener = listener;
+                    };
+                    worker.addEventListener('message', e => messageListener && messageListener(e.data));
+                }
 
-                worker.addEventListener('message', function (e) {
+                worker.setMessageListener(function(message) {
                     //debug
-                    //console.debug("< " + e.data);
-                    var message = e.data;
+                    //console.debug("< " + message);
                     if (message == 'next') {
                         if (!jaileval.data_buffer || !postBuff) {
                             var err = new Error("Something went wrong by returning a synchronous function.");
@@ -1663,15 +1684,15 @@ class JailPromise {
                         else postBuff = null;
                         return;
                     }
-                    if (typeof e.data == 'object' && e.data.index && e.data.value) {
-                        if (e.data.buffer) {
-                            resolvedBuffers.set(toJailObject(jaileval, e.data.index, jail_buffer), e.data.value);
+                    if (typeof message == 'object' && message.index && message.value) {
+                        if (message.buffer) {
+                            resolvedBuffers.set(toJailObject(jaileval, message.index, jail_buffer), message.value);
                         } else {
-                            jaileval.objs[e.data.index] = e.data.value;
+                            jaileval.objs[message.index] = message.value;
                         }
                         return;
                     }
-                    var reader = new Tokenizer(e.data);
+                    var reader = new Tokenizer(message);
                     var func = reader.name();
                     if (func == null) throw jail_error();
                     func = func.toLowerCase();
@@ -1805,7 +1826,12 @@ class JailPromise {
                 });
             }
 
-            if(cachedWorkerCode) {
+            if(newThread) {
+                newThread().then(w => {
+                    worker = w;
+                    gotWorkerCode();
+                }).catch(ex => this.terminate(ex));
+            } else if(cachedWorkerCode) {
                 gotWorkerCode();
             } else {    
                 xhrResolvers.push(() => gotWorkerCode());
@@ -1850,6 +1876,12 @@ class JailPromise {
             jaileval.message_listeners = [];
             jaileval.data_buffer = null;
             jaileval.buffer_state = 0;
+            jaileval.isThread = !!newThread || isChild;
+            jaileval.children = [];
+            jaileval.isChild = isChild;
+            jaileval.parent = parent;
+            jaileval.jailedCode = jaileval.parent ? jaileval.parent.jailedCode : jailCode;
+            jaileval.threadsEnabled = false;
             jaileval.next_callback = function () {
                 if (jaileval.empty_callback != null && jaileval.value_callbacks.length >= 1) {
                     var callback = jaileval.empty_callback;
@@ -1865,6 +1897,9 @@ class JailPromise {
             Object.defineProperty(this, 'apiEvents', { configurable: false, enumerable: true, writable: false, value: toJailObject(jaileval, 2, null) });
             Object.defineProperty(this, jail_eval, { configurable: false, enumerable: false, writable: false, value: jaileval });
             Object.defineProperty(this, 'is_terminated', { configurable: true, enumerable: true, writable: true, value: false });
+            Object.defineProperty(this, "isThread", { configurable: false, writable: false, value: !!newThread || isChild });
+            Object.defineProperty(this, "isParentChild", { configurable: false, writable: false, value: isChild });
+            Object.defineProperty(this, "parent", { configurable: false, writable: false, value: parent });
             /**
              * The default name for a script
              */
@@ -1880,7 +1915,7 @@ class JailPromise {
         execute(src, name) {
             if (!name) name = this.defaultScriptName;
             if (!name) name = 'sandboxed';
-            return this[jail_eval]('"eval";//# sourceURL=' + name + '\n' + String(src).replace(/\/\/#\s.+$/gm, ''));
+            return this[jail_eval]('"eval";//# sourceURL=' + name + '\n' + String(src));
         }
 
 
@@ -1891,37 +1926,37 @@ class JailPromise {
         executeAsResolved(src, name) {
             if (!name) name = this.defaultScriptName;
             if (!name) name = 'sandboxed';
-            return this[jail_eval]('"eval_static";//# sourceURL=' + name + '\n' + String(src).replace(/\/\/#\s.+$/gm, ''));
+            return this[jail_eval]('"eval_static";//# sourceURL=' + name + '\n' + String(src));
         }
 
         /**
          * Execute a piece of code in a function and return the return value from it.
          * @param {string} src the script to execute
          */
-        executeAsFunction(src) {
+        executeAsFunction(src, name) {
             if (!name) name = this.defaultScriptName;
             if (!name) name = 'sandboxed';
-            return this[jail_eval]('"function";//# sourceURL=' + name + '\n' + String(src).replace(/\/\/#\s.+$/gm, ''));
+            return this[jail_eval]('"function";//# sourceURL=' + name + '\n' + String(src));
         }
 
         /**
          * Execute a piece of code in async function and return the return va;ue from it.
          * @param {string} src the script to execute
          */
-        executeAsAsyncFunction(src) {
+        executeAsAsyncFunction(src, name) {
             if (!name) name = this.defaultScriptName;
             if (!name) name = 'sandboxed';
-            return this[jail_eval]('"async_function";//# sourceURL=' + name + '\n' + String(src).replace(/\/\/#\s.+$/gm, ''));
+            return this[jail_eval]('"async_function";//# sourceURL=' + name + '\n' + String(src));
         }
 
         /**
          * Execute a piece of code in generator function and return the iterator from it.
          * @param {string} src the script to execute
          */
-        executeAsGeneratorFunction(src) {
+        executeAsGeneratorFunction(src, name) {
             if (!name) name = this.defaultScriptName;
             if (!name) name = 'sandboxed';
-            return this[jail_eval]('"generator_function";//# sourceURL=' + name + '\n' + String(src).replace(/\/\/#\s.+$/gm, ''));
+            return this[jail_eval]('"generator_function";//# sourceURL=' + name + '\n' + String(src));
         }
 
         /**
@@ -2044,6 +2079,92 @@ class JailPromise {
             return this[jail_eval]('return this.whitelist(this.util.keys(this.apis)) && this.whitelistEvent(this.util.keys(this.apiEvents));')
         }
 
+        get threadsEnabled() {
+            return this[jail_eval].threadsEnabled;
+        }
+
+        /**
+         * Enable 'threads' for this sandbox.
+         * The entire Jail API will be exposed to the sandbox to create new sandboxes (threads)
+         * Threads can create other threads.
+         * The main code is te ancestor of all threads.
+         * 
+         * Every thread has a parent:
+         * 1. It can be main. in that case the .parent property returns null
+         * 2. It can be an another thread. in that case the .parent property returns a JailJS instance
+         * 
+         * The thread can inspect their children, execute or restrict code just like the parent object can do.
+         * If children threads want to create new children, it must be first enabled by the parent with enableThreads
+         * 
+         * Children threads cannot access the JailJS of their parent.
+         * 
+         * Parent threads do not see threads in threads. Suppose the following:
+         * A thread's parent is MAIN
+         * B thread's parent is A
+         * C thread's parent is B
+         * D thread's parent is C
+         * 
+         * A has created B (new JailJS). A will see that C and D parent is both B (even if D is created by C)
+         * B has created C and will see that D's parent is C
+         * 
+         * Properties:
+         * isThread: returns true or false, if the parent of this thread is an another thread (and NOT main).
+         * isParentChild: returns true or false, if the parent of this thread is an CHILD of this thread
+         * parent: returns the parent of this thread or null if it cannot be accessed
+         *         it can only be accessed if isParentChild is true.
+         */
+        async enableThreads() {
+            if(this[jail_eval].isChild) throw new TypeError("You cannot enable threads on children/threads sandbox from the MAIN code. You need to run enableThreads() on the parent thead. ");
+            if(this[jail_eval].threadsEnabled) throw new TypeError("Threads are already enabled");
+            if(!this[jail_eval].jailedCode) {
+                this[jail_eval].jailedCode = '(' + await this[jail_eval]("return this.jailedCode") + ')();';
+                jailCode = this[jail_eval].jailedCode;
+            }
+            var id = subId + "." + subIndex++;
+            async function createThread() {
+                //this will point to a parent JailJS
+                var child = new JailJS(wrapper_secret, this);
+                this[jail_eval].children.push(child);
+                child.onTerminate().then(() => {
+                    var ind = this[jail_eval].children.indexOf(child);
+                    if(ind >= 0) this[jail_eval].children.splice(ind, 1);
+                });
+                await child.executeAsFunction(this[jail_eval].jailedCode, "JailedCore" + (new Date()).toJSON() + id);
+                var messageListener;
+                child.addMessageListener(async message => {
+                    if(messageListener) { 
+                        if(message instanceof JailObject) message = await message.resolve();
+                        messageListener(message); 
+                    }
+                });
+                return {
+                    terminate: () => child.forceTerminate(new Error("Child is closed by parent")),
+                    async setMessageListener(listener) {
+                        if(!listener) {
+                            messageListener = null;
+                            return;
+                        }
+                        if(listener instanceof JailObject) listener = await listener.resolve();
+                        if(typeof listener != 'function') return;
+                        messageListener = listener;
+                    },
+                    async postMessage(message) {
+                        if(message instanceof JailObject) message = await message.resolve();
+                        return child.postMessage(message);
+                    }
+                };
+            }
+            this[jail_eval].threadsEnabled = true;
+            return (await this.executeAsFunction("return (" + jailFunc + ");", "JailJS" + (new Date()).toJSON())).invoke([createThread.bind(this), jailFunc, this[jail_eval].jailedCode, id]).catch(ex => {
+                this[jail_eval].threadsEnabled = false;
+                throw ex;
+            });
+        }
+
+        getChildren() {
+            return [...this[jail_eval].children];
+        }
+        
         /**
          * Get all the name of the properties provided by the VM, that are standard blacklisted.
          * All other properties provided by the VM, doesn't harm and only work with the executed code/data itself.
@@ -2429,4 +2550,6 @@ class JailPromise {
         }
         return result;
     }
-})();
+    Object.defineProperty(self.JailJS, "isThread", {value: !!newThread, writable: false, configurable: false});
+});
+this.jailFunc(null, null, null, "");

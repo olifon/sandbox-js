@@ -57,7 +57,7 @@
                                 me.log('[exception] ' + await convert_variable_to_string(ex));
                                 me.prompt();
                             });
-                            jail.timeoutAfter(3000).catch(function(ex) {term.log('[exception] JailTerminatedError: ' + ex.message)});
+                            //jail.timeoutAfter(3000).catch(function(ex) {term.log('[exception] JailTerminatedError: ' + ex.message)});
                         } else term.prompt();
                     }
             });
@@ -96,6 +96,7 @@
                     jail = new JailJS();
                     var syncSupported = false;
                     await jail.enableSynchronousAPI().then(() => syncSupported = true).catch(ex => console.error(ex));
+                    jail.enableThreads().catch(ex => console.error(ex));
                     root = jail.root;
                     jail.onTerminate().then(setupJail);
                     jail.execute(`
