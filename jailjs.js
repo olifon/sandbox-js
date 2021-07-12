@@ -2129,7 +2129,7 @@ this.jailFunc = (function (newThread, jailFunc, jailCode, subId) {
                     var ind = this[jail_eval].children.indexOf(child);
                     if(ind >= 0) this[jail_eval].children.splice(ind, 1);
                 });
-                await child.executeAsFunction(this[jail_eval].jailedCode, "JailedCore" + (new Date()).toJSON() + id);
+                await child.executeAsFunction(this[jail_eval].jailedCode, "JailedCore" + id);
                 var messageListener;
                 child.addMessageListener(async message => {
                     if(messageListener) { 
@@ -2155,7 +2155,7 @@ this.jailFunc = (function (newThread, jailFunc, jailCode, subId) {
                 };
             }
             this[jail_eval].threadsEnabled = true;
-            return (await this.executeAsFunction("return (" + jailFunc + ");", "JailJS" + (new Date()).toJSON())).invoke([createThread.bind(this), jailFunc, this[jail_eval].jailedCode, id]).catch(ex => {
+            return (await this.executeAsFunction("return (" + jailFunc + ");", "JailJS")).invoke([createThread.bind(this), jailFunc, this[jail_eval].jailedCode, id]).catch(ex => {
                 this[jail_eval].threadsEnabled = false;
                 throw ex;
             });
