@@ -8,6 +8,10 @@
     </head>
     <body>
         <div id="termDiv"></div>
+        <p>You can pase here examples from github:</p>
+        <textarea rows="10" cols="70" id="script">Paste here your script</textarea>
+        <br /><br />
+        <button onclick="jail.execute(document.getElementById('script').value).catch(ex => term.log('[error] ' + convert_variable_to_string(ex)))">Execute</button>
         <script type="text/javascript">
             var convert_variable_to_string = function(result) {
                 return JailJS.variableToString(result, async result => {
@@ -166,8 +170,8 @@
                                 countReset(label) { if(!label) label = "default"; label = String(label); if(delete labels[label]) consoleLog(label + ": reseted"); }, 
                                 debug: debugLog,
                                 trace(...data) { if(indents) log(indents); log('[trace]\\n'); consoleLog((new Error()).stack.split('\\n').slice(1).map(x => x.trim()).filter(x => x).map(x => indents + '  ' + x).join('\\n')); log('\\n'); },
-                                print(str) { log(str); },
-                                clear() { clear(); },
+                                print: log,
+                                clear,
                                 close(msg) { close(msg || "Jail terminated by jailed code"); },
                                 table(data) {
                                     if(!(data instanceof Array)) data = [data];
@@ -202,24 +206,23 @@
                                     if(indents.length < 2) indents = "";
                                     else indents = indents.substr(0, indents.length - 2);
                                 },
-                                newLine() { newLine(); },
+                                newLine,
                                 dir(...data) { consoleLog(...data.map(x => typeof x == 'string' ? JSON.stringify(x) : x)); },
                                 format
                             };
                             self.console.groupCollapsed = self.console.group;
                             self.console.dirxml = self.console.dir;
                             self.print = msg => {log(msg); newLine(); };
-                            self.clear = () => void clear();
-                            self.close = msg => void close(msg || "Jail terminated by jailed code");
+                            self.clear = clear;
+                            self.close = close;
                             self.debug = debugLog;
                         }
-                    `, 'console')).invoke([(async function(data) {
-                        console.log(data);
+                    `, 'console')).invoke([new JailVoidFunction(async function(data) {
                         if(typeof data == 'string') term.write(data);
                         else term.write(await convert_variable_to_string(data));
-                    }), () => term.newLine(), (function() {
+                    }), new JailVoidFunction(() => term.newLine()), new JailVoidFunction(function() {
                         term.clear();
-                    }), msg => jail.forceTerminate(msg)]);
+                    }), new JailVoidFunction(msg => jail.forceTerminate(msg))]);
                     var loadFile = file_name => {
                         if(typeof file_name != 'string') throw new TypeError("Argument needs to be a string");
                         if(file_name.includes("..") || !/^[a-zA-Z0-9\-.]+$/.test(file_name)) throw new TypeError("Invalid file name");

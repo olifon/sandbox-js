@@ -40,7 +40,7 @@ this.jailFunc = (function () {
         /**
          * This function is used for the .tostring by functions recieved from the main program.
          */
-        var jailed_to_string = function JailedFunctionToString() { return "function " + (this.name || "") + "() { [" + (this.isSynchronous ? "Synchronous " : "") + "Jail API] }" };
+        var jailed_to_string = function JailedFunctionToString() { return "function " + (this.name || "") + "() { [" + (this.isSynchronous ? "Synchronous " : "") + (this.isVoid ? "Void " : "") + "Jail API] }" };
 
         /**
          * In the jail, only basic JS function are available.
@@ -1239,6 +1239,62 @@ this.jailFunc = (function () {
                         writable: false,
                         value: jailed_to_string
                     });
+                    util.defineProperty(r, 'isVoid', {
+                        configurable: true,
+                        enumerable: false,
+                        writable: false,
+                        value: false
+                    });
+                    data.objs[index] = r;
+                    return r;
+                } else if (type == 'voidfunction') {
+                    var callFunctionVoidInMain = function (a) {
+                        var str = 'CallVoid(' + index + ',' + valueToMessage(this);
+                        var args = util.toArray(a);
+                        for (var i = 0; i < util.arrayLength(args); i++) {
+                            str += ',' + valueToMessage(args[i]);
+                        }
+                        str += ')';
+                        root.postMessage(str);
+                    };
+                    //we do this so that the code from (callFunctionInMain) is not exposed by toString
+                    var r = function JailedFunction() {
+                        return callFunctionVoidInMain(arguments);
+                    }
+                    if (typeof value == 'object' && typeof value.name == 'string') {
+                        try {
+                            util.defineProperty(r, "name", {
+                                configurable: true,
+                                enumerable: false,
+                                writable: false,
+                                value: value.name
+                            });
+                        } catch (ex) { }
+                    }
+                    util.defineProperty(r, "isJailAPI", {
+                        configurable: true,
+                        enumerable: false,
+                        writable: false,
+                        value: true
+                    });
+                    util.defineProperty(r, "isSynchronous", {
+                        configurable: true,
+                        enumerable: false,
+                        writable: false,
+                        value: false
+                    });
+                    util.defineProperty(r, 'toString', {
+                        configurable: true,
+                        enumerable: false,
+                        writable: false,
+                        value: jailed_to_string
+                    });
+                    util.defineProperty(r, 'isVoid', {
+                        configurable: true,
+                        enumerable: false,
+                        writable: false,
+                        value: true
+                    });
                     data.objs[index] = r;
                     return r;
                 } else if (type == 'syncfunction') {
@@ -1313,6 +1369,12 @@ this.jailFunc = (function () {
                         enumerable: false,
                         writable: false,
                         value: jailed_to_string
+                    });
+                    util.defineProperty(r, 'isVoid', {
+                        configurable: true,
+                        enumerable: false,
+                        writable: false,
+                        value: false
                     });
                     data.objs[index] = r;
                     return r;
@@ -1607,6 +1669,20 @@ this.jailFunc = (function () {
                     postMessage('Return(' + valueToMessage(apply(function () {
                         return bind(_apply, r.function)(this, r.args);
                     }, [r.bind])) + ')');
+                } catch (ex) {
+                    postMessage('ReturnError(' + valueToMessage(ex) + ')');
+                }
+            }
+            snippets.callvoid = function (code) {
+                try {
+                    var r = apply(new Function(code), [data]);
+                    if (!("bind" in r)) {
+                        r.bind = self;
+                    }
+                    apply(function () {
+                        return bind(_apply, r.function)(this, r.args);
+                    }, [r.bind]);
+                    postMessage('Return(undefined)');
                 } catch (ex) {
                     postMessage('ReturnError(' + valueToMessage(ex) + ')');
                 }

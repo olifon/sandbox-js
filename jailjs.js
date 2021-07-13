@@ -52,6 +52,13 @@ this.jailFunc = (function (newThread, jailFunc, jailCode, subId) {
             Object.freeze(this);
         }
     }
+    this.JailVoidFunction = class {
+        constructor(func) {
+            if (!(func instanceof Function)) throw new Error("Func argument needs to be a function");
+            this.value = func;
+            Object.freeze(this);
+        }
+    };
     /*
       This class wraps promises from the Jailed environment.
       It is needed because you cannot let a promise return an another promise (without chaining).
@@ -879,6 +886,18 @@ this.jailFunc = (function (newThread, jailFunc, jailCode, subId) {
             if (index == null) index = -(jaileval.objscount++);
             jaileval.funcs[index] = value;
             return '(this.wrap("syncfunction",' + String(index) + ',{name:' + JSON.stringify(value.value.name) + '}))';
+        } else if(value instanceof JailVoidFunction) {
+            var index;
+            var objskeys = Object.keys(jaileval.funcs);
+            var objslen = objskeys.length;
+            for (var i = 0; i < objslen; i++) {
+                var key = objskeys[i];
+                if (key == undefined) continue;
+                if (jaileval.funcs[key] === value) index = value;
+            }
+            if (index == null) index = -(jaileval.objscount++);
+            jaileval.funcs[index] = value;
+            return '(this.wrap("voidfunction",' + String(index) + ',{name:' + JSON.stringify(value.value.name) + '}))';
         } else if (value instanceof Promise || value instanceof JailPromise) {
             if (value instanceof JailPromise) value = value.value;
             if (index in jaileval.promises) {
@@ -1206,8 +1225,10 @@ this.jailFunc = (function (newThread, jailFunc, jailCode, subId) {
          * Signatures (checked in order):
          * invoke(name as symbol|string, args)
          * invoke(name as symbol|string)
+         * invoke(bind, args, voided)
          * invoke(bind, args)
          * invoke(args)
+         * invoke(name as symbol|string|Array, bind, args, voided)
          * invoke(name as symbol|string|Array, bind, args)
          * 
          * name can be an Array, symbol or string
@@ -1221,8 +1242,13 @@ this.jailFunc = (function (newThread, jailFunc, jailCode, subId) {
          * @param {string|symbol|Array|undefined} name the name of the function
          * @param {JailObject|object|null|undefined} bind the this for the function to invoke. Normally it is the obejct itself. (null/undefined to set it to auto)
          * @param {Array|undefined} args the arguments array
+         * @param {boolean} voided If you do not care about a return value
          */
-        invoke(name, bind, args) {
+        invoke(name, bind, args, voided) {
+            if(typeof args == 'boolean') {
+                voided = args;
+                args = undefined;
+            }
             var thisLocation = '';
             if (args == undefined) {
                 if (typeof name == 'string' || typeof name == 'symbol' || name instanceof String || name instanceof Symbol) {
@@ -1251,7 +1277,7 @@ this.jailFunc = (function (newThread, jailFunc, jailCode, subId) {
                     thisLocation.pop();
                 } else thisLocation = '';
             }
-            var str = '"call"; return {function: ' + getFieldLocation(this, name) + ',args:[';
+            var str = '"' + (voided ? "callvoid" : "call") + '"; return {function: ' + getFieldLocation(this, name) + ',args:[';
             for (var i = 0; i < args.length; i++) {
                 if (i > 0) str += ',';
                 str += '(' + fromValue(this[jail_eval], args[i]) + ')';
@@ -1508,7 +1534,7 @@ this.jailFunc = (function (newThread, jailFunc, jailCode, subId) {
          * doesn't have a primitive value.
          * @returns {boolean|string|symbol|number|Promise|Function|Error|undefined}
          */
-        valueOf() {
+        valueOf(funcVoided) {
             if (this[jail_primitive] === jail_function) {
                 var index = this[jail_index];
                 var jaileval = this[jail_eval];
@@ -1517,20 +1543,32 @@ this.jailFunc = (function (newThread, jailFunc, jailCode, subId) {
                 if (index in jaileval.funcs) {
                     var func = jaileval.funcs[index];
                     if (func instanceof JailSynchronousFunction) func = func.value;
-                    ret = function () {
-                        try {
-                            var result = func.apply(null, Array.prototype.slice.call(arguments));
-                            if (result instanceof Promise) result = new JailPromise(result);
-                            return Promise.resolve(result);
-                        } catch (ex) {
-                            if (ex instanceof Promise) ex = new JailPromise(ex);
-                            return Promise.reject(ex);
-                        }
-                    };
+                    if(func instanceof JailVoidFunction || funcVoided) {
+                        ret = function() {
+                            try {
+                                func.apply(null, Array.prototype.slice.call(arguments));
+                                return Promise.resolve(undefined);
+                            } catch (ex) {
+                                if (ex instanceof Promise) ex = new JailPromise(ex);
+                                return Promise.reject(ex);
+                            }
+                        };
+                    } else {
+                        ret = function () {
+                            try {
+                                var result = func.apply(null, Array.prototype.slice.call(arguments));
+                                if (result instanceof Promise) result = new JailPromise(result);
+                                return Promise.resolve(result);
+                            } catch (ex) {
+                                if (ex instanceof Promise) ex = new JailPromise(ex);
+                                return Promise.reject(ex);
+                            }
+                        };
+                    }
                 } else {
                     ret = function () {
                         //we will NOT expose our this
-                        return me.invoke('', jaileval.control.root, Array.prototype.slice.call(arguments));
+                        return me.invoke('', jaileval.control.root, Array.prototype.slice.call(arguments), funcVoided);
                     };
                 }
                 ret.wrapper = this;
@@ -1736,12 +1774,36 @@ this.jailFunc = (function (newThread, jailFunc, jailCode, subId) {
                                     if (thisArg[jail_index] == 0) thisArg = self; //root
                                     var func = jaileval.funcs[index];
                                     if (func instanceof JailSynchronousFunction) func = func.value;
+                                    else if(func instanceof JailVoidFunction) func = func.value;
                                     var result = func.apply(thisArg, args);
                                     worker.postMessage(">return [" + String(call_index) + ",(" + fromValue(jaileval, result) + ")];");
                                 } catch (ex) {
                                     worker.postMessage("<return [" + String(call_index) + ",(" + fromValue(jaileval, ex) + ")];");
                                 }
                             } else worker.postMessage("<return [" + String(call_index) + ",(" + fromValue(jaileval, new ReferenceError("Jail function not found")) + ")];");
+                            break;
+                        case 'callvoid':
+                            if (!reader.startCall()) throw jail_error();
+                            var index = reader.number();
+                            if (index == null) throw jail_error();
+                            if (!reader.next(',')) throw jail_error();
+                            var thisArg = toValue(jaileval, reader);
+                            var args = [];
+                            while (reader.next(',')) {
+                                args.push(toValue(jaileval, reader));
+                            }
+                            if (!reader.end()) throw jail_error();
+                            if(index in jaileval.funcs) {
+                                try {
+                                    if (thisArg[jail_index] == 0) thisArg = self; //root
+                                    var func = jaileval.funcs[index];
+                                    if (func instanceof JailSynchronousFunction) func = func.value;
+                                    else if(func instanceof JailVoidFunction) func = func.value;
+                                    func.apply(thisArg, args);
+                                } catch(ex) {
+                                    Promise.reject(ex); //report error
+                                }
+                            } else Promise.reject(new ReferenceError("Jail function not found")); //report error
                             break;
                         case 'callsync':
                             if (!jaileval.data_buffer) {
@@ -1768,6 +1830,8 @@ this.jailFunc = (function (newThread, jailFunc, jailCode, subId) {
                                         var promise = false;
                                         if (func instanceof JailSynchronousFunction) {
                                             promise = func.promise;
+                                            func = func.value;
+                                        } else if(func instanceof JailVoidFunction) {
                                             func = func.value;
                                         }
                                         var result = func.apply(thisArg, args);
@@ -2143,9 +2207,11 @@ this.jailFunc = (function (newThread, jailFunc, jailCode, subId) {
                 var child = new JailJS(wrapper_secret, this);
                 child.onTerminate().catch(() => {}); //do not report uncaught promises
                 this[jail_eval].children.push(child);
+                var onTerminateListener = null;
                 child.onTerminate().then(() => {
                     var ind = this[jail_eval].children.indexOf(child);
                     if(ind >= 0) this[jail_eval].children.splice(ind, 1);
+                    if(onTerminateListener) onTerminateListener();
                 });
                 await child.executeAsFunction(this[jail_eval].jailedCode, "JailedCore" + id);
                 var messageListener;
@@ -2156,24 +2222,39 @@ this.jailFunc = (function (newThread, jailFunc, jailCode, subId) {
                     }
                 });
                 return {
-                    terminate: () => child.forceTerminate(new Error("Child is closed by parent")),
-                    async setMessageListener(listener) {
+                    terminate: new JailVoidFunction(() => child.forceTerminate(new Error("Child is closed by parent"))),
+                    setMessageListener: new JailVoidFunction(async (listener) => {
                         if(!listener) {
                             messageListener = null;
                             return;
                         }
-                        if(listener instanceof JailObject) listener = await listener.resolve();
+                        if(listener instanceof JailObject) {
+                            if(!listener.isFunction()) return;
+                            listener = listener.valueOf(true);
+                        }
                         if(typeof listener != 'function') return;
                         messageListener = listener;
-                    },
-                    async postMessage(message) {
+                    }),
+                    setOnTerminateListener: new JailVoidFunction(async(listener) => {
+                        if(!listener) {
+                            onTerminateListener = null;
+                            return;
+                        }
+                        if(listener instanceof JailObject) {
+                            if(!listener.isFunction()) return;
+                            listener = listener.valueOf(true);
+                        }
+                        if(typeof listener != 'function') return;
+                        onTerminateListener = listener;
+                    }),
+                    postMessage: new JailVoidFunction(async(message) => {
                         if(message instanceof JailObject) message = await message.resolve();
                         return child.postMessage(message);
-                    }
+                    })
                 };
             }
             this[jail_eval].threadsEnabled = true;
-            return (await this.executeAsFunction("return (" + jailFunc + ");", "JailJS")).invoke([createThread.bind(this), jailFunc, this[jail_eval].jailedCode, id]).catch(ex => {
+            return (await this.executeAsFunction("return (" + jailFunc + ");", "JailJS")).invoke(this.root, [createThread.bind(this), jailFunc, this[jail_eval].jailedCode, id], true).catch(ex => {
                 this[jail_eval].threadsEnabled = false;
                 throw ex;
             });
