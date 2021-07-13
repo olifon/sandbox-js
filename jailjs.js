@@ -1960,6 +1960,7 @@ this.jailFunc = (function (newThread, jailFunc, jailCode, subId) {
             jaileval.parent = parent;
             jaileval.jailedCode = jaileval.parent ? jaileval.parent.jailedCode : jailCode;
             jaileval.threadsEnabled = false;
+            jaileval.errorsSanitized = false;
             jaileval.next_callback = function () {
                 if (jaileval.empty_callback != null && jaileval.value_callbacks.length >= 1) {
                     var callback = jaileval.empty_callback;
@@ -2020,7 +2021,7 @@ this.jailFunc = (function (newThread, jailFunc, jailCode, subId) {
         }
 
         /**
-         * Execute a piece of code in async function and return the return va;ue from it.
+         * Execute a piece of code in async function and return the return value from it.
          * @param {string} src the script to execute
          */
         executeAsAsyncFunction(src, name) {
@@ -2037,6 +2038,36 @@ this.jailFunc = (function (newThread, jailFunc, jailCode, subId) {
             if (!name) name = this.defaultScriptName;
             if (!name) name = 'sandboxed';
             return this[jail_eval]('"generator_function";//# sourceURL=' + name + '\n' + String(src));
+        }
+
+        /**
+         * Compile the code as a Function (returning a JailObject containing the function)
+         * @param {string} src the script to compile
+         */
+        compileAsFunction(src, name) {
+            if (!name) name = this.defaultScriptName;
+            if (!name) name = 'sandboxed';
+            return this[jail_eval]('"compile";//# sourceURL=' + name + '\n' + String(src));
+        }
+
+        /**
+         * Compile the code as a AsyncFunction (returning a JailObject containing the function)
+         * @param {string} src the script to execute
+         */
+        compileAsAsyncFunction(src, name) {
+            if (!name) name = this.defaultScriptName;
+            if (!name) name = 'sandboxed';
+            return this[jail_eval]('"compile_async";//# sourceURL=' + name + '\n' + String(src));
+        }
+
+        /**
+         * Compile the code as a GeneratorFunction (returning a JailObject containing the function)
+         * @param {string} src the script to execute
+         */
+        compileAsGeneratorFunction(src, name) {
+            if (!name) name = this.defaultScriptName;
+            if (!name) name = 'sandboxed';
+            return this[jail_eval]('"compile_generator";//# sourceURL=' + name + '\n' + String(src));
         }
 
         /**
@@ -2159,6 +2190,61 @@ this.jailFunc = (function (newThread, jailFunc, jailCode, subId) {
             return this[jail_eval]('return this.whitelist(this.util.keys(this.apis)) && this.whitelistEvent(this.util.keys(this.apiEvents));')
         }
 
+        /**
+         * Strip any trace of jailed.js in every Error stack created by the jail.
+         * By new Error() (or new TypeError() etc); Error.prototype.toString; and any Error sent to the main.
+         * 
+         * E.g this:
+         * ReferenceError: fsdf is not defined                                                                                                       
+         *   at eval (term-0:2:1)                                                                                                                              
+         *   at eval (<anonymous>)                                                                                                                             
+         *   at eval (JailedCore:1699:37)                                                                                                                      
+         *   at Object.jailFunc.snippets.eval (JailedCore:1630:60)                                                                                             
+         *   at eval (JailedCore:1608:29)
+         * 
+         * Becomes:
+         * ReferenceError: fdsf is not defined                                                                                                       
+         *   at eval (term-0:2:1)
+         * 
+         * You need (or actually MUST) run this function before running any code to prevent weird results.
+         * Also run this function BEFORE enableThreads() also to prevent weird results (with JailError)
+         * 
+         * Note that this function DOES NOT provide any extra security to the jailed code.
+         * It can be bypassed easily
+         * try {
+         *   1n+2;
+         * } catch(ex) {
+         *   var theRealStack = ex.stack;
+         *   ex.toString();
+         *   var strippedStack = ex.stack;
+         *   console.log(theRealStack);
+         *   console.log(strippedStack)
+         * }
+         * 
+         * See this as a 'error' cleaner and not for safety.
+         * If some code calls to .toString() the stack will be stripped.
+         * 
+         * This error stripper currently only works (good) on chrome (more browsers in the future)
+         * 
+         * @returns 
+         */
+        sanitizeErrors() {
+            if(this[jail_eval.errorsSanitized]) return Promise.resolve(false);
+            return this[jail_eval]('return this.sanitizeErrors();').then(ret => {
+                if(ret) {
+                    this[jail_eval].errorsSanitized = true;
+                }
+                return ret;
+            });
+        }
+
+        get errorsSanitized() {
+            return this[jail_eval].errorsSanitized;
+        }
+
+        /**
+         * If this sandbox is allowed to create new threads (by creating a sandbox in a sandbox)
+         */
         get threadsEnabled() {
             return this[jail_eval].threadsEnabled;
         }
@@ -2200,7 +2286,7 @@ this.jailFunc = (function (newThread, jailFunc, jailCode, subId) {
             if(this[jail_eval].isChild) throw new TypeError("You cannot enable threads on children/threads sandbox from the MAIN code. You need to run enableThreads() on the parent thead. ");
             if(this[jail_eval].threadsEnabled) throw new TypeError("Threads are already enabled");
             if(!this[jail_eval].jailedCode) {
-                this[jail_eval].jailedCode = '(' + await this[jail_eval]("return this.jailedCode") + ')();';
+                this[jail_eval].jailedCode = await this[jail_eval]("return this.jailedCode");
                 jailCode = this[jail_eval].jailedCode;
             }
             if(threadLimit != null) this.threadLimit = threadLimit;
@@ -2217,7 +2303,7 @@ this.jailFunc = (function (newThread, jailFunc, jailCode, subId) {
                     if(ind >= 0) this[jail_eval].children.splice(ind, 1);
                     if(onTerminateListener) onTerminateListener();
                 });
-                await child.executeAsFunction(this[jail_eval].jailedCode, "JailedCore" + id);
+                await child.executeAsFunction('(' + this[jail_eval].jailedCode + ')(' + JSON.stringify(String(id)) + ')', "JailedCore" + id);
                 var messageListener;
                 child.addMessageListener(async message => {
                     if(messageListener) { 

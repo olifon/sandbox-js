@@ -12,16 +12,17 @@
  * will work in a closure. Why? Every important local value and function in this closure will not be accessible
  * outside this closure for the jailed code.
  */
-this.jailFunc = (function () {
+this.jailFunc = (function (jailID) {
     this.onmessage = null;
     (function (global_eval) {
         if(this.jailFunc) {
             var jailedCode = this.jailFunc.toString();
             delete this.jailFunc;
         }
+        Object.defineProperty(global_eval, "name", {configurable: false, writable: false, value: 'RunJailedCode' + jailID});
         var undefined = undefined;
         /**
-         * The untrusted code may alter any important native function and value that are provided from the VM,
+         * The untrusted code may alter any important native function (and its properties!) and value that are provided from the javascript engine,
          * to prevent that, we copy all required native functions to the root value. So any malicous edits
          * to the native functions will not affect the communication between the jail and the main program.
          */
@@ -79,6 +80,8 @@ this.jailFunc = (function () {
             var _substring = String.prototype.substring;
             var _indexOf = String.prototype.indexOf;
             var _startsWith = String.prototype.startsWith;
+            var _split = String.prototype.split;
+            var _includes = String.prototype.includes;
             var _getLength = Object.getOwnPropertyDescriptor(Array.prototype, 'length');
             if (_getLength && _getLength.get) _getLength = _getLength.get;
             else if (!_getLength || _getLength.configurable) {
@@ -98,6 +101,7 @@ this.jailFunc = (function () {
                 _str_getLength = undefined;
             } else _str_getLength = undefined;
             var _getArray = Array.prototype.slice;
+            var _splice = Array.prototype.splice;
             var _trim = String.prototype.trim;
             var _String = String;
             var _s_toString = String.prototype.toString;
@@ -153,7 +157,13 @@ this.jailFunc = (function () {
             var _sharedbuffer_slice = self.SharedArrayBuffer ? self.SharedArrayBuffer.prototype.slice : null;
             var _array_get_iterator = Array.prototype[Symbol.iterator];
             var _array_next = Object.getPrototypeOf([][Symbol.iterator]()).next;
-
+            var _weakset_has = self.WeakSet ? self.WeakSet.prototype.has : self.Set.prototype.has;
+            var _weakset_add = self.WeakSet ? self.WeakSet.prototype.add : self.Set.prototype.add;
+            var _weakset_delete = self.WeakSet ? self.WeakSet.prototype.delete : self.Set.prototype.delete;
+            var _weakmap_has = self.WeakMap ? self.WeakMap.prototype.has : self.Map.prototype.has;
+            var _weakmap_set = self.WeakMap ? self.WeakMap.prototype.set : self.Map.prototype.set;
+            var _weakmap_get = self.WeakMap ? self.WeakMap.prototype.get : self.Map.prototype.get;
+            var _weakmap_delete = self.WeakMap ? self.WeakMap.prototype.delete : self.Map.prototype.delete;
             var _typedArray = null;
             var _typedProto = null;
             var _get_typed_buffer = null;
@@ -191,10 +201,14 @@ this.jailFunc = (function () {
                 Symbol,
                 Boolean,
                 Error,
+                WeakSet : self.WeakSet || self.Set,
+                WeakMap: self.WeakMap || self.Map,
+                ErrorPrototype: Error.prototype,
                 TypeError,
                 Set,
                 Map,
                 Date,
+                Proxy,
                 TypedArray: _typedArray,
                 BigInt: self.BigInt,
                 Atomics: self.Atomics,
@@ -225,7 +239,7 @@ this.jailFunc = (function () {
                 PromiseRejectionEvent: self.PromiseRejectionEvent,
                 EventTarget: self.EventTarget,
                 toStringTag: Symbol.toStringTag,
-                errors: { EvalError, RangeError, ReferenceError, SyntaxError, TypeError, AggregateError: self.AggregateError, InternalError: self.InternalError },
+                errors: { EvalError, RangeError, ReferenceError, SyntaxError, TypeError, AggregateError: self.AggregateError, InternalError: self.InternalError, URIError: self.URIError },
                 GeneratorFunction: Object.getPrototypeOf(function* () { }).constructor,
                 AsyncFunction: Object.getPrototypeOf(async function () { }).constructor,
                 bind: bind,
@@ -246,6 +260,12 @@ this.jailFunc = (function () {
                 util: {
                     substring(str, start, end) {
                         return apply(_substring, [str, start, end]);
+                    },
+                    split(str, del) {
+                        return apply(_split, [str, del]);
+                    },
+                    includes(str, val) {
+                        return apply(_includes, [str, val]);
                     },
                     indexOf(str, search) {
                         return apply(_indexOf, [str, search]);
@@ -392,6 +412,34 @@ this.jailFunc = (function () {
                         var byteOffset = apply(_get_typed_byteOffset, [array]);
                         return apply(_buffer_slice, [apply(_get_typed_buffer, [array]), byteOffset, apply(_get_typed_byteLength, [array]) + byteOffset])
                     },
+                    spliceArray(arr, start, count) {
+                        return apply(_splice, [arr, start, count]);
+                    },
+                    weakSet: {
+                        add(set, value) {
+                            return apply(_weakset_add, [set, value]);
+                        },
+                        has(set, value) {
+                            return apply(_weakset_has, [set, value]);
+                        },
+                        delete(set, value) {
+                            return apply(_weakset_delete, [set, value]);
+                        }
+                    },
+                    weakMap: {
+                        set(set, key, value) {
+                            return apply(_weakmap_set, [set, key, value]);
+                        },
+                        has(set, key) {
+                            return apply(_weakmap_has, [set, key]);
+                        },
+                        get(set, key) {
+                            return apply(_weakmap_get, [set, key]);
+                        },
+                        delete(set, key) {
+                            return apply(_weakmap_delete, [set, key]);
+                        }
+                    },
                     keys: bind(Object.keys, Object),
                     defineProperty: bind(Object.defineProperty, Object),
                     defineProperties: bind(Object.defineProperties, Object),
@@ -416,7 +464,7 @@ this.jailFunc = (function () {
                     bind
                 },
             }
-            var addEventListener = self.addEventListener;
+            root.realErrors = Object.assign({Error: root.Error}, root.errors);
             var undefined = root.undefined;
             /**
              * The webworker can do more then the jailed code is privileged to do.
@@ -425,7 +473,7 @@ this.jailFunc = (function () {
              * You can allow more by copying the values from apis.
              */
             //Temporary and persistent are constants that cannot be redefined
-            var whitelist = ["Object", "Function", "Array", "Number", "parseFloat", "parseInt", "Infinity", "NaN", "undefined", "Boolean", "String", "Symbol", "Date", "Promise", "RegExp", "Error", "EvalError", "RangeError", "ReferenceError", "SyntaxError", "TypeError", , "atob", "btoa", "AggregateError", "URIError", "JSON", "Math", "Intl", "ArrayBuffer", "Uint8Array", "Int8Array", "Uint16Array", "Int16Array", "Uint32Array", "Int32Array", "Float32Array", "Float64Array", "Uint8ClampedArray", "BigUint64Array", "BigInt64Array", "DataView", "Map", "BigInt", "Set", "WeakMap", "WeakSet", "Proxy", "Reflect", "decodeURI", "decodeURIComponent", "encodeURI", "encodeURIComponent", "escape", "unescape", "eval", "isFinite", "isNaN", "SharedArrayBuffer", "Atomics", "globalThis", "self", "WebAssembly", "setTimeout", "setInterval", "clearTimeout", "clearInterval", "EventTarget", "Event", "ErrorEvent", "PromiseRejectionEvent", "onerror", "onrejectionhandled", "onunhandledrejection", "TEMPORARY", "PERSISTENT"];
+            var whitelist = ["Object", "Function", "Array", "Number", "parseFloat", "parseInt", "Infinity", "NaN", "undefined", "Boolean", "String", "Symbol", "Date", "Promise", "RegExp", "Error", "EvalError", "RangeError", "ReferenceError", "SyntaxError", "TypeError", "atob", "btoa", "AggregateError", "URIError", "JSON", "Math", "Intl", "ArrayBuffer", "Uint8Array", "Int8Array", "Uint16Array", "Int16Array", "Uint32Array", "Int32Array", "Float32Array", "Float64Array", "Uint8ClampedArray", "BigUint64Array", "BigInt64Array", "DataView", "Map", "BigInt", "Set", "WeakMap", "WeakSet", "Proxy", "Reflect", "decodeURI", "decodeURIComponent", "encodeURI", "encodeURIComponent", "escape", "unescape", "eval", "isFinite", "isNaN", "SharedArrayBuffer", "Atomics", "globalThis", "self", "WebAssembly", "setTimeout", "setInterval", "clearTimeout", "clearInterval", "EventTarget", "Event", "ErrorEvent", "PromiseRejectionEvent", "onerror", "onrejectionhandled", "onunhandledrejection", "TEMPORARY", "PERSISTENT"];
             var blacklist = ["onmessage", "onmessageerror", "postMessage"];
             var root_keys = Object.getOwnPropertyNames(self).concat(Object.getOwnPropertySymbols(self) || []);
             var root_length = root_keys.length;
@@ -976,6 +1024,7 @@ this.jailFunc = (function () {
                         return "Array(" + String(index) + ')';
                     }
                 } else if (value instanceof Error) {
+                    try { data.errorParseStack(value); } catch(ex) {}
                     var typeName = 'Error';
                     for (var name in errors) {
                         try {
@@ -1019,7 +1068,15 @@ this.jailFunc = (function () {
                         }
                         if (index == null) index = data.count++;
                         data.objs[index] = value;
-                        return "Error(" + JSON.stringify(typeName) + "," + JSON.stringify(String(value.name)) + "," + JSON.stringify(String(value.message)) + "," + JSON.stringify(String(value.stack)) + "," + String(index) + ")";
+                        try {
+                            return "Error(" + JSON.stringify(typeName) + "," + JSON.stringify(String(value.name)) + "," + JSON.stringify(String(value.message)) + "," + JSON.stringify(String(value.stack)) + "," + String(index) + ')';
+                        } catch (ex) {
+                            try {
+                                return "Error(" + JSON.stringify(typeName) + "," + JSON.stringify(String(value.name)) + "," + JSON.stringify(String("No message from this error")) + "," + JSON.stringify(String("No stack from this error")) + "," + String(index) + ')';
+                            } catch (e) {
+                                return "Error(" + JSON.stringify(typeName) + "," + JSON.stringify("No name for this error") + "," + JSON.stringify("No message from this error") + "," + JSON.stringify("No stack from this error") + "," + String(index) + ")";
+                            }
+                        }
                     }
                 } else if (
                     root.Uint8Array &&
@@ -1436,11 +1493,28 @@ this.jailFunc = (function () {
             var JSON = { parse: root.JSON.parse, stringify: root.JSON.stringify };
             var Array = root.Array;
             var Event = root.Event;
+            var Proxy = root.Proxy;
+            var WeakSet = root.WeakSet;
+            var WeakMap = root.WeakMap;
             var util = root.util;
             var bind = root.bind;
             var apply = root.apply;
             var undefined = root.undefined;
             var self = root.self;
+            var errorsSanitized = false;
+
+            var parser = (() => function ParseJailedCode(code) {
+                return new Function(code);
+            })();
+            util.defineProperty(parser, "name", {configurable: false, writable: false, value: 'ParseJailedCode' + jailID});
+            var parserAsync = (() => function ParseJailedCode(code) {
+                return new AsyncFunction(code);
+            })();
+            util.defineProperty(parserAsync, "name", {configurable: false, writable: false, value: 'ParseJailedCode' + jailID});
+            var parserGenerator = (() => function ParseJailedCode(code) {
+                return new AsyncFunction(code);
+            })();
+            util.defineProperty(parserGenerator, "name", {configurable: false, writable: false, value: 'ParseJailedCode' + jailID});
 
             /* Root for the code from the messages */
             data = {
@@ -1464,7 +1538,10 @@ this.jailFunc = (function () {
                 sharedValue: 0,
                 functionReturns: {},
                 functionReturnIndex: 0,
-                symbol: function (x, y) {
+                errorParseStack: () => {},
+                stackParsed: null,
+                errorStacks: null,
+                symbol(x, y) {
                     if (x in data.objs) return data.objs[x];
                     else {
                         var s;
@@ -1474,7 +1551,7 @@ this.jailFunc = (function () {
                         return s;
                     }
                 },
-                static: function (x, y) {
+                static(x, y) {
                     if (y == undefined) y = true;
                     if (typeof x == 'object' || typeof x == 'function') {
                         return new StaticType(x, y);
@@ -1482,7 +1559,7 @@ this.jailFunc = (function () {
                         return x;
                     }
                 },
-                whitelist: function (x) {
+                whitelist(x) {
                     if (!(x instanceof Array)) {
                         x = [x];
                     }
@@ -1503,7 +1580,7 @@ this.jailFunc = (function () {
                     }
                     return didall;
                 },
-                whitelistEvent: function (x) {
+                whitelistEvent(x) {
                     if (!(x instanceof Array)) x = [x];
                     var len = util.arrayLength(x);
                     var didall = true;
@@ -1522,7 +1599,7 @@ this.jailFunc = (function () {
                     }
                     return didall;
                 },
-                enableSynchronousAPI: function () {
+                enableSynchronousAPI() {
                     if (SharedArrayBuffer == null || Atomics == null || root.TextDecoder == null) throw new root.errors.TypeError("Synchronous API not supported in worker");
                     var obj = data.getLastObj();
                     if (obj == null) throw new root.errors.TypeError("No Shared buffer given.")
@@ -1530,20 +1607,20 @@ this.jailFunc = (function () {
                     data.sharedBuffer = obj;
                     return true;
                 },
-                disableSynchronousAPI: function () {
+                disableSynchronousAPI() {
                     data.sharedBuffer = null;
                     return true;
                 },
-                postMessage: function (message) {
+                postMessage(message) {
                     var ev = new Event('message');
                     ev.data = message;
                     util.dispatchEvent(rootEventTarget, ev);
                     return null;
                 },
-                getLastObj: function () {
+                getLastObj() {
                     return util.pop(data.postedObj);
                 },
-                fromTypedArray: function (name, len, txt) {
+                fromTypedArray(name, len, txt) {
                     var cls = root.arrays[name];
                     if (!cls) throw root.errors.TypeError("Unknown binary Array type " + cls);
                     var cons = root.ArrayBuffer;
@@ -1551,6 +1628,169 @@ this.jailFunc = (function () {
                     var arr = util.sliceBuffer(imports.compressedTextToBin(cons, txt), 0, len);
                     if (name != "SharedArrayBuffer" && name != "ArrayBuffer") arr = new cls(arr);
                     return arr;
+                },
+                sanitizeErrors() {
+                    if(errorsSanitized) return false;
+                    var doneErrors = new WeakSet();
+                    data.stackParsed = doneErrors;
+                    var errorStacks = new WeakMap();
+                    data.errorStacks = errorStacks;
+
+                    function JailParseStack(err) {
+                        try {
+                            if(!(err instanceof root.realErrors.Error)) return;
+                            if(util.weakSet.has(doneErrors, err)) return err.stack;
+                            util.weakSet.add(doneErrors, err);
+                            var lines = util.split(err.stack, '\n');
+                            var linesLength = util.arrayLength(lines);
+                            var start = null;
+                            var end = null;
+                            var preserveStart = false;
+                            for(var x = 0; x < linesLength; x++) {
+                                var line = lines[x];
+                                if(x == 0 && !util.startsWith(line, " ")) {
+                                    preserveStart = true;
+                                    continue;
+                                }
+                                var test = util.split(line, " at ");
+                                var testLength = util.arrayLength(test);
+                                if(testLength > 1 && util.trim(test[0]) == "") {
+                                    test = util.trim(test[1]);
+                                } else {
+                                    test = util.trim(util.split(line, "@")[0]);
+                                }
+
+                                if(start == null) {
+                                    if(
+                                        util.startsWith(test, "JailCreateError") || 
+                                        util.includes(test, ".JailCreateError") || 
+                                        util.includes(test, "(JailCreateError") ||
+                                        util.includes(test, "at JailCreateError")
+                                    ) {
+                                        start = x;
+                                    }
+                                }
+                                
+                            }
+                            for(var x = linesLength - 1; x >= 0; x--) {
+                                var line = lines[x];
+                                var test = util.split(line, " at ");
+                                var testLength = util.arrayLength(test);
+                                if(testLength > 1 && util.trim(test[0]) == "") {
+                                    test = util.trim(test[1]);
+                                } else {
+                                    test = util.split(line, "@");
+                                    testLength = util.arrayLength(test);
+                                    if(testLength > 1) {
+                                        test = util.trim(test[1]);
+                                    } else {
+                                        test = util.trim(test[0]);
+                                    }
+                                }
+                                if(end == null) {
+                                    if(
+                                        util.startsWith(test, "RunJailedCode" + jailID) || 
+                                        util.startsWith(test, "ParseJailedCode" + jailID) || 
+                                        util.includes(test, ".RunJailedCode" + jailID) ||
+                                        util.includes(test, ".ParseJailedCode" + jailID) || 
+                                        util.includes(test, "(RunJailedCode" + jailID) ||
+                                        util.includes(test, "(ParseJailedCode" + jailID) ||
+                                        util.includes(test, "at RunJailedCode" + jailID) ||
+                                        util.includes(test, "at ParseJailedCode" + jailID)
+                                    ) {
+                                        end = x;
+                                        break;
+                                    }
+                                }
+                            }
+                            util.spliceArray(lines, preserveStart ? 1 : 0, start + (preserveStart ? 0 : 1));
+                            if(end != null) {
+                                if(start != null) {
+                                    end -= start;
+                                    linesLength -= start;
+                                }
+                                if(end && (util.includes(lines[end - 1], "<anonymous>") || util.includes(lines[end - 1], "(anonymous)") || util.includes(lines[end - 1], "@anonymous"))) {
+                                    end--;
+                                }
+                                util.spliceArray(lines, end, linesLength - end);
+                            }
+                            util.defineProperty(err, "stack", {value: util.joinArray(lines, '\n'), writable: true, configurable: true, enumerable: false});
+                            return util.joinArray(lines, '\n');
+                        } catch(ex) {}
+                        return stack;
+                    }
+                    data.errorParseStack = JailParseStack;
+
+                    var createError = (() => function JailCreateError(target, argArray) {
+                        var err = new target(...util.arrayIterable(argArray));
+                        JailParseStack(err);
+                        return err;
+                    })();
+
+                    var names = util.getOwnPropertyNames(self);
+                    var namesLen = util.arrayLength(names);
+                    for(var i = 0; i < namesLen; i++) {
+                        var name = names[i];
+                        try {
+                            var ourError = true;
+                            var err = root.realErrors[name];
+                            if(!err) {
+                                try {
+                                    err = self[name];
+                                } catch(ex) {continue;}
+                                ourError = false;
+                            }
+                            if(!err || typeof err != 'function') continue;
+                            var proto = err.prototype;
+                            if(err != root.realErrors.Error && !(proto instanceof root.realErrors.Error)) continue;
+                            var prox = new Proxy(err, {construct: createError, apply: function JailCreateError(target, thisArg, args) {
+                                return createError(target, thisArg, args);
+                            }});
+                            if(ourError) {
+                                if(name == 'Error') {
+                                    root[name] = prox;
+                                } else if(name == 'TypeError') {
+                                    root[name] = prox;
+                                    root.errors[name] = prox;
+                                } else {
+                                    root.errors[name] = prox;
+                                }
+                            }
+                            try {
+                                util.defineProperty(proto, 'constructor', {value: prox, enumerable: false, configurable: true, writable: true});
+                            } catch(ex) {}
+                            util.defineProperty(self, name, {value: prox, configurable: true, writable: true, enumerable: false});
+                            
+                        } catch(ex) {}
+                    }
+                    var proto = root.ErrorPrototype;
+                    ((proto, oldToString, oldDesc) => {
+                        util.defineProperty(proto, 'toString', {value: function() {
+                            JailParseStack(this);
+                            return apply(oldToString, [this]);
+                        }, writable: true, configurable: true, enumerable: false});
+                        util.defineProperty(proto, 'stack', {get() {
+                            if(oldDesc && oldDesc.get) return apply(oldDesc.get, [this]);
+                            else {
+                                if(!this || typeof this != 'object') return null;
+                                return util.weakMap.get(errorStacks, this) || null;
+                            }
+                        }, set(value) {
+                            if(oldDesc && oldDesc.set) {
+                                var ret = apply(oldDesc.set, [this, value]);
+                                JailParseStack(this);
+                                return ret;
+                            }
+                            else {
+                                if(!this || typeof this != 'object') return null;
+                                util.weakMap.set(errorStacks, this, value);
+                                JailParseStack(this);
+                                return value;
+                            }
+                        }, configurable: true, enumerable: true});
+                    })(proto, proto.toString, util.getOwnPropertyDescriptor(proto, 'stack'));
+                    errorsSanitized = true;
+                    return true;
                 }
             };
             var snippets = data.snippets;
@@ -1624,7 +1864,36 @@ this.jailFunc = (function () {
                     }
                 }
             });
+            var exeCode = (() => function RunJailedCode(func) {
+                return apply(func, [self]);
+            })();
+            util.defineProperty(exeCode, "name", {configurable: false, writable: false, value: 'RunJailedCode' + jailID});
+            var exeCompiled = (() => function RunJailedCode() {
+                return apply(this, [self]);
+            })();
+            util.defineProperty(exeCompiled, "name", {configurable: false, writable: false, value: 'RunJailedCode' + jailID});
 
+            snippets.compile = function(code) {
+                try {
+                    postMessage("Return(" + valueToMessage(bind(exeCompiled, parser(code))) + ")");
+                } catch(ex) {
+                    postMessage("ReturnError(" + valueToMessage(ex) + ")");
+                }
+            };
+            snippets.compile_async = function(code) {
+                try {
+                    postMessage("Return(" + valueToMessage(bind(exeCompiled, parserAsync(code))) + ")");
+                } catch(ex) {
+                    postMessage("ReturnError(" + valueToMessage(ex) + ")");
+                }
+            };
+            snippets.compile_generator = function(code) {
+                try {
+                    postMessage("Return(" + valueToMessage(bind(exeCompiled, parserGenerator(code))) + ")");
+                } catch(ex) {
+                    postMessage("ReturnError(" + valueToMessage(ex) + ")");
+                }
+            };
             snippets.eval = function (code) {
                 try {
                     postMessage('Return(' + valueToMessage(global_eval(code)) + ')');
@@ -1641,21 +1910,21 @@ this.jailFunc = (function () {
             };
             snippets.function = function (code) {
                 try {
-                    postMessage('Return(' + valueToMessage(apply(new Function(code), [self])) + ')');
+                    postMessage('Return(' + valueToMessage(exeCode(parser(code))) + ')');
                 } catch (ex) {
                     postMessage('ReturnError(' + valueToMessage(ex) + ')');
                 }
             };
             snippets.async_function = function (code) {
                 try {
-                    postMessage('Return(' + valueToMessage(apply(new AsyncFunction(code), [self])) + ')');
+                    postMessage('Return(' + valueToMessage(exeCode(parserAsync(code))) + ')');
                 } catch (ex) {
                     postMessage('ReturnError(' + valueToMessage(ex) + ')');
                 }
             };
             snippets.generator_function = function (code) {
                 try {
-                    postMessage('Return(' + valueToMessage(apply(new GeneratorFunction(code), [self])) + ')');
+                    postMessage('Return(' + valueToMessage(exeCode(parserGenerator(code))) + ')');
                 } catch (ex) {
                     postMessage('ReturnError(' + valueToMessage(ex) + ')');
                 }
@@ -1694,10 +1963,17 @@ this.jailFunc = (function () {
          * By declaring the eval function here (and giving it as argument to the closure), we absolutely know
          * that the eval function has no access to any variables in the closure.
          */
-        (function (_globalEval_, _myCode_) {
-            arguments = undefined;
-            return (1, _globalEval_)(_myCode_);
-        }).bind(self, self.eval.bind(self))
+        (() => {
+            arguments = null;
+
+            //we create this function (with a name) so that you can identify (from the stack of errors)
+            //between the jailed core and the jailed code
+            //this declaration is in a closure so that there is no global value 'RunJailedCode'
+            return (function RunJailedCode(_globalEval_, _myCode_) {
+                arguments = null;
+                return (1, _globalEval_)(_myCode_);
+            }).bind(self, self.eval.bind(self));
+        })()
     );
 });
-this.jailFunc();
+this.jailFunc("");
