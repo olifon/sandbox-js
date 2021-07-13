@@ -1652,6 +1652,7 @@ this.jailFunc = (function (newThread, jailFunc, jailCode, subId) {
                 var terminated = false;
                 do_terminate = function (err) {
                     if (!terminated) {
+                        terminated = true;
                         var ind = jails.indexOf(me);
                         if(ind >= 0) jails.splice(ind, 1);
                         //also terminate ALL the children
@@ -1675,7 +1676,6 @@ this.jailFunc = (function (newThread, jailFunc, jailCode, subId) {
                         jaileval.funcs = {};
                         jaileval.promises = {};
                         resolve();
-                        terminated = true;
                     }
                 }
             });
@@ -1701,6 +1701,10 @@ this.jailFunc = (function (newThread, jailFunc, jailCode, subId) {
                         messageListener = listener;
                     };
                     worker.addEventListener('message', e => messageListener && messageListener(e.data));
+                } else {
+                    worker.setOnTerminateListener(() => {
+                        if(!me.is_terminated) jaileval.terminate();
+                    });
                 }
 
                 worker.setMessageListener(function(message) {
