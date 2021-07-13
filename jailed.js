@@ -1537,7 +1537,8 @@ this.jailFunc = (function () {
                 postMessage: function (message) {
                     var ev = new Event('message');
                     ev.data = message;
-                    return util.dispatchEvent(rootEventTarget, ev);
+                    util.dispatchEvent(rootEventTarget, ev);
+                    return null;
                 },
                 getLastObj: function () {
                     return util.pop(data.postedObj);
