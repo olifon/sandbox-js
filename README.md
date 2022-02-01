@@ -1,5 +1,7 @@
 # JailJS
 
+Project is dead, but still working.
+
 Run untrusted javascript code in your browser, securely. With a rich API you can run a lot of different things in this sandbox. Including webassembly, binary data, API functions and javascript programs using multiple workers, 
 
 ## Getting Started
